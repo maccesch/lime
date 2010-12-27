@@ -1,0 +1,30 @@
+#sidebar {
+	background-color: #dadfe6;
+}
+
+#sidebar label {
+	font-weight: bold;
+	margin: 10px 6px 1px;
+	text-shadow: rgba(255, 255, 255, 1) 0 1px;
+	opacity: .6;
+}
+
+#sidebar button {
+	-moz-appearance: none;
+	text-align: left;
+	padding: 3px 15px 4px;
+	margin: 0;
+/*	-moz-box-sizing: content-box; */
+	display: block;
+    border: none;
+	border-top: 1px solid rgba(0, 0, 0, 0);
+    background: none;
+}
+
+#sidebar button[checked=true] {
+	background: -moz-linear-gradient(-90deg, #74a4de, #2a68bb);
+	border-color: -moz-linear-gradient(-90deg, #5B91D2, #2a68bb);
+	border-top: 1px solid #5B91D2;
+	color: #ffffff;
+	text-shadow: rgba(0, 0, 0, .4) 0 1px;
+}

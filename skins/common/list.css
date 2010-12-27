@@ -1,0 +1,9 @@
+#ld-list-box {
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+#ld-list-box tree {
+	margin: -1px;
+}

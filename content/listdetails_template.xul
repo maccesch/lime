@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+
+<page id="listdetails_template"
+		xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+
+    <box id="main-content-box" flex="1">
+        
+        <!-- list -->
+        <vbox flex="1">
+        
+            <box flex="1" id="ld-list-box">
+            </box>
+            
+            <statusbar id="list-statusbar" class="middle">
+                <statusbarpanel id="status-msg" label="3452 Artikel gefunden"/>
+                <spacer flex="1"/>
+                <statusbarpanel id="list-buttons">
+                    <button label="Neu" class="flat" id="new-button"/>
+                </statusbarpanel>
+            </statusbar>
+        </vbox>
+
+        <!-- splitter -->
+        <splitter state="open">
+            <spacer flex="1"/>
+            <statusbar class="middle"/>
+        </splitter>
+        
+        <!-- details -->
+        <deck selectedIndex="0" id="details-deck">
+            <!-- view -->
+            <vbox>
+            
+                <box flex="1" id="ld-details-view-box">
+                </box>
+                
+                <statusbar class="details-statusbar">
+                    <statusbarpanel>
+                        <button label="Bearbeiten" class="flat" id="edit-button"/>
+                    </statusbarpanel>
+                    <spacer flex="1"/>
+                </statusbar>
+            
+            </vbox>
+            
+            <!-- edit -->
+            <vbox>
+            
+                <box flex="1" id="ld-details-edit-box">
+                </box>
+                
+                <statusbar class="details-statusbar">
+                    <statusbarpanel>
+                        <button label="Fertig" class="flat" id="done-button"/>
+                    </statusbarpanel>
+                    <spacer flex="1"/>
+                </statusbar>
+            
+            </vbox>
+        </deck>
+        
+    </box>
+</page>

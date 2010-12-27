@@ -1,0 +1,9 @@
+splitter {
+	background-color: #eeeeff;
+	width: 1px;
+}
+
+splitter spacer {
+	border-right: 1px solid #bbbbbb;
+	width: 0px;
+}

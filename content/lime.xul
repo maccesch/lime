@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://lime/skin/" type="text/css"?>
+
+<!-- <?xul-overlay href="modules/languages/sidebar_overlay.xul"?> -->
+
+<window
+    id="main-window"
+    title="Literaturverwaltung"
+    persist="screenX screenY width height"
+    orient="vertical"
+    xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+
+<script src="js/libs/mootools-1.2.4-core-nc.js" type="text/javascript"/>
+<script src="js/libs/xultools.js" type="text/javascript"/>
+<!-- <script src="js/libs/mozwebsql.js" type="text/javascript"/> -->
+<script src="js/libs/dummywebsql.js" type="text/javascript"/>
+<script src="js/libs/impel-source.js" type="text/javascript"/>
+
+<script src="js/settings.js" type="text/javascript"/>
+<script src="js/statusbar.js" type="text/javascript"/>
+<script src="js/pagemanager.js" type="text/javascript"/>
+<script src="js/modelviews.js" type="text/javascript"/>
+<script src="js/moduleloader.js" type="text/javascript"/>
+
+
+<!-- <script src="js/main.js"/> -->
+
+<toolbox>
+<!--	<menubar id="findfiles-menubar">
+		<menu id="file-menu" label="File" accesskey="f">
+			<menupopup id="file-popup">
+				<menuitem label="Open Search..." accesskey="o"/>
+				<menuitem label="Save Search..." accesskey="s"/>  
+				<menuseparator/>
+				<menuitem label="Close" accesskey="c"/>
+			</menupopup>
+		</menu>
+		<menu id="edit-menu" label="Edit" accesskey="e">
+			<menupopup id="edit-popup">
+				<menuitem label="Cut" accesskey="t"/>
+				<menuitem label="Copy" accesskey="c"/>
+				<menuitem label="Paste" accesskey="p" disabled="true"/>
+			</menupopup>
+		</menu>
+	</menubar> -->
+
+	<toolbar id="search-toolbar" fullscreentoolbar="true" class="chromeclass-toolbar">
+		<toolbarspring/>
+		<textbox id="search-textbox" clickSelectsAll="true" emptytext="Suche" type="search"/>
+	</toolbar>
+
+</toolbox>
+
+<!-- content -->
+<hbox flex="1">
+
+	<!-- sidebar -->
+	<vbox id="sidebar-wrapper" persist="width">
+		<vbox id="sidebar" flex="1">
+			<label value="BASIC DATA"/>
+            <button id="literature-button-sidebar" type="radio" group="sidebar-group">
+                Literature Types
+            </button>
+	        <box id="sidebar-basic-data-end"/>
+        </vbox>
+        
+		<statusbar class="left"/>
+	</vbox>
+
+	<splitter state="open" id="sidebar-splitter">
+		<spacer flex="1"/>
+		<statusbar class="middle"/>
+	</splitter>
+
+<!--    <iframe id="main-content-iframe" flex="2" name="main-content-iframe" type="chrome" src=""/>  src="chrome://xuldemo/content/modules/languages/page.xul"/> -->
+	<deck id="main-content-deck" flex="2"/>
+	
+</hbox>
+
+
+
+</window>

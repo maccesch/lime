@@ -1,0 +1,7 @@
+toolbar {
+	-moz-appearence: -moz-mac-unified-toolbar;
+}
+
+#search-toolbar {
+	padding: 0 4px 4px 4px;
+}

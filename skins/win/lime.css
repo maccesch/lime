@@ -1,0 +1,10 @@
+@import url(chrome://limecommon/skin/global.css);
+@import url(chrome://limecommon/skin/flatbutton.css);
+@import url(chrome://limecommon/skin/details.css);
+@import url(chrome://limecommon/skin/list.css);
+@import url(chrome://limecommon/skin/sidebar.css);
+@import url(chrome://limecommon/skin/statusbar.css);
+@import url(chrome://limecommon/skin/toolbar.css);
+
+@import url(flatbutton.css);
+@import url(statusbar.css);

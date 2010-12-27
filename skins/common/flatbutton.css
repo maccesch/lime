@@ -1,0 +1,21 @@
+button.flat {
+    -moz-border-bottom-colors: none;
+    -moz-border-left-colors: none;
+    -moz-border-right-colors: none;
+    -moz-border-top-colors: none;	-moz-appearance: none;
+	color: rgba(0, 0, 0, .8);
+	font-weight: bold;
+	padding: 0 .5em;
+	text-shadow: rgba(255, 255, 255, .4) 0 1px;
+	border: 1px #5a5a5a solid;
+	border-color: -moz-linear-gradient(-90deg, #fe0000, #00b8b8);
+	-moz-border-radius: 3px;
+	background: -moz-linear-gradient(-90deg, #fefefe, #b8b8b8);
+	-moz-box-shadow: rgba(255, 255, 255, .4) 0 1px;
+	height: 1.8em;
+	min-width: 1.0em;
+}
+
+button.flat:active {
+	background: -moz-linear-gradient(-90deg, #999999, #cccccc);
+}

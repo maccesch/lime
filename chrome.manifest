@@ -1,0 +1,4 @@
+content lime file:content/
+skin lime classic/1.0 file:skins/win/ os=WINNT
+skin lime classic/1.0 file:skins/osx/ os=Darwin
+skin lime classic/1.0 file:skins/common/

@@ -1,0 +1,26 @@
+#edit-button {
+	margin-left: 0;
+}
+
+#done-button {
+	margin-left: 0;
+}
+
+.details-statusbar statusbarpanel {
+	-moz-box-pack: start;
+	padding-left: 0;
+	margin-left: 0;
+	margin-left: 0px;
+}	
+
+.details-statusbar {
+	padding-left: 0;
+}
+
+#new-button {
+	margin-right: 0;
+}
+
+#list-buttons {
+	padding-right: 0;
+}

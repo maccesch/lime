@@ -1,0 +1,23 @@
+statusbar.left, statusbar.middle {
+    -moz-binding: none;
+}
+
+statusbar button {
+    margin: 1px 5px 0px;
+}
+
+.details-statusbar statusbarpanel {
+	-moz-box-pack: start;
+    border: none;
+    -moz-appearance: none;
+}	
+
+#list-buttons {
+	-moz-box-pack: end;
+    border: none;
+    -moz-appearance: none;
+}
+
+#status-msg {
+    padding-top: 1px;
+}
