@@ -8,6 +8,7 @@
 			'type': 'text/javascript'
 		});
 		
+		loadScript(path + 'js/models.js');
 		loadScript(path + 'js/init.js');
 	}
 	

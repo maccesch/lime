@@ -1,19 +1,24 @@
 
-PageManager.getInstance().append('Languages', 'Basic Data', newXulEl('box'));
+(function() {
 
-var initLanguages = function() {
-	var objs = [];
-	for (var i = 0; i < 100; ++i) {
-		var lang = new Language();
-		lang.setName('Lieselotte ' + i);
-		lang.setShortcut('L' + i);
-		objs.push(lang);
+	var initLanguages = function() {
+		var objs = [];
+		for (var i = 0; i < 100; ++i) {
+			var lang = new Language();
+			lang.setName('Lieselotte ' + i);
+			lang.setShortcut('L' + i);
+			objs.push(lang);
+		}
+		
+		var listViewDescr = createDefaultImpelClassListViewDescr(LanguagePeer);
+		var editDescr = createDefaultImpelClassEditDescr(LanguagePeer);
+		
+		var ctrl = new ImpelClassListDetailsController(listViewDescr, editDescr);
+		ctrl.setModelObjects(objs);
+		
+		return ctrl.getElement();
 	}
 	
-	var listView = new ImpelClassListView(LanguagePeer, "languages-list-box");
-	var detailsView = new ImpelClassDetailsView(LanguagePeer, "languages-details-deck");
-	
-	var ctrl = new ImpelClassListDetailsController(listView, detailsView);
-	ctrl.setModelObjects(objs);
-}
+	PageManager.getInstance().append('Languages', 'Basic Data', initLanguages());
 
+})();

@@ -19,7 +19,6 @@
 <script src="js/libs/impel-source.js" type="text/javascript"/>
 
 <script src="js/settings.js" type="text/javascript"/>
-<script src="js/statusbar.js" type="text/javascript"/>
 <script src="js/pagemanager.js" type="text/javascript"/>
 <script src="js/modelviews.js" type="text/javascript"/>
 <script src="js/moduleloader.js" type="text/javascript"/>

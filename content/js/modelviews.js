@@ -22,18 +22,53 @@ function createDefaultImpelClassEditDescr(modelPeer, options) {
 	var editDescr = {
 		save: {},
 		get: {},
+		show: {},
+		createXul: {},
 		create: function() {
 			return eval('new ' + modelPeer.getBaseObjName() + '();');
-		}
+		},
+		_viewValueEl: {},
+		_editValueEl: {}
 	}
 	modelPeer.getColumns().each(function(col) {
 		var key = col.split('.')[1];
 		var keyUp = key[0].toUpperCase() + key.substr(1);
+		
 		editDescr.get[key] = function(modelEl) {
 			return modelEl['get' + keyUp]();
 		}
+		
+		editDescr.show[key] = function(modelEl) {
+			alert(key);
+			var value = editDescr.get[key](modelEl);
+			editDescr._viewValueEl[key].setAttribute('value', value);
+			editDescr._editValueEl[key].setAttribute('value', value);
+		}
+		
 		editDescr.save[key] = function(modelEl, value) {
 			return modelEl['set' + keyUp](value);
+		}
+		
+		editDescr.createXul[key] = function(viewEl, editEl) {
+			var attrs = {
+				'value': keyUp,
+				'class': 'details-label'
+			};
+			
+			var label1 = newXulEl('label', attrs);
+			var label2 = newXulEl('label', attrs);
+			viewEl.appendChild(label1);
+			editEl.appendChild(label2);
+			
+			editDescr._viewValueEl[key] = newXulEl('label', {
+				'class': 'details-view-value'
+			});
+			viewEl.appendChild(editDescr._viewValueEl[key]);
+			
+			editDescr._editValueEl[key] = newXulEl('textbox', {
+				'class': 'details-edit-value'
+			});
+			editEl.appendChild(editDescr._editValueEl[key]);
 		}
 	});
 	return editDescr;
@@ -45,52 +80,71 @@ function createDefaultImpelClassEditDescr(modelPeer, options) {
 var ImpelClassListView = new Class({
 	Implements: Events,
 	
-	initialize: function(listViewDescr, insertId) {
+	initialize: function(listViewDescr, parentEl) {
 		
-		if (listViewDescr.getColumns) {
-			this.listViewDescr = createDefaultImpelClassListViewDescr(listViewDescr);
-		}
-		else {
-			this.listViewDescr = listViewDescr;
-		}
+		this.listViewDescr = listViewDescr;
 		
-		/*
-		this.tree = $(insertId).getElement('tree');
-		this.treecols = this.tree.getElements('treecol');
-		this.treeChildren = this.tree.getElement('treechildren');
-		*/
-		this.generateXul(insertId);
+		this.generateXul(parentEl);
 		
 		this.tree.addEvent('select', function(event) {
 			this.fireEvent('select', this.tree);
 		}.bind(this));
+		
+		ImpelClassListView.instanceNo += 1;
 	},
 	
-	generateXul: function(insertId) {
+	generateXul: function(parentEl) {
+		
 		this.treeChildren = newXulEl('treechildren');
 		var cols = newXulEl('treecols');
 		var i = 0;
 		var splitter;
+		this.treecols = [];
 		for (key in this.listViewDescr.cells) {
 			++i;
-			cols.adopt(newXulEl('treecol', {
+			var col = newXulEl('treecol', {
 				'label': key,
 				'flex': 1,
 				'persist': 'width hidden',
-				'id': insertId + '-list-view'
-			}));
+				'id': ImpelClassListView.instanceNo + '-list-view',
+				'key': key
+			});
+			cols.appendChild(col);
+			this.treecols.push(col);
 			splitter = newXulEl('splitter', {
 				'class': 'tree-splitter'
 			});
-			cols.adopt(splitter);
+			cols.appendChild(splitter);
 		}
-		splitter.destroy();
-		this.tree = newXulEl('tree', { 'flex': 1 });
-		this.tree.adopt(cols);
-		this.tree.adopt(this.treeChildren);
+		this.tree = $(newXulEl('tree', { 'flex': 1 }));
+		this.tree.adopt(cols, this.treeChildren);
 		
-		this.treecols = cols;
-		$(insertId).adopt(tree);
+		var box = newXulEl('box', { 'flex': 1 });
+		box.appendChild(this.tree);
+		parentEl.appendChild(box);
+		
+		parentEl.appendChild(this._generateStatusbarXul());
+	},
+	
+	_generateStatusbarXul: function() {
+		var statusbar = newXulEl('statusbar', { 'class': 'middle' });
+		
+		this.msgPanel = newXulEl('statusbarpanel');
+		statusbar.appendChild(this.msgPanel);
+		
+		var spacer = newXulEl('spacer', { 'flex': 1 });
+		statusbar.appendChild(spacer);
+		
+		var statusbarpanel = newXulEl('statusbarpanel');
+		statusbar.appendChild(statusbarpanel);
+		
+		this.newButton = newXulEl('button', {
+			'label': 'New',
+			'class': 'flat'
+		});
+		statusbarpanel.appendChild(this.newButton);
+		
+		return statusbar;
 	},
 	
 	addObject: function(object) {
@@ -138,59 +192,95 @@ var ImpelClassListView = new Class({
 	
 	select: function(index) {
 		this.tree.view.selection.select(index);
+	},
+	
+	getNewButton: function() {
+		return this.newButton;
 	}
 });
+
+ImpelClassListView.instanceNo = 0;
+
 
 var ImpelClassDetailsView = new Class({
 	Implements: Events,
 	
-	initialize: function(editDescr, deckId) {
+	initialize: function(editDescr, deckEl) {
 		
-		if (editDescr.getColumns) {
-			this.editDescr = createDefaultImpelClassEditDescr(editDescr);
-		}
-		else {
-			this.editDescr = editDescr;
-		}
+		this.editDescr = editDescr;
 		
-		this.dataElements = [[], []];
-		
-		this.deck = $(deckId);
-		
-		var el = $(editId);
-		for (key in this.editDescr.save) {
-			var input = el.getElement('[key="' + key + '"]');
-			this.dataElements[1][key] = input;
-			
-			input.addEvent('change', function(input) {
-				this.fireEvent('change', [input.getAttribute('key'), input.value]);
-			}.bind(this, input));
-		}
-		el = $(viewId);
-		for (key in this.editDescr.get) {
-			var input = el.getElement('[key="' + key + '"]');
-			this.dataElements[0][key] = input;
-		}
+		this.generateXul(deckEl);
 	},
 
-	generateXul: function() {
-		var req = new Request({
-			url: '/listdetails_template.xul',
-			async: false,
-			evalResponse: true
+	generateXul: function(deckEl) {
+		this.deck = deckEl;
+		var viewEl = this._generateViewXul();
+		var editEl = this._generateEditXul();
+		
+		this.deck.appendChild(viewEl);
+		this.deck.appendChild(editEl);
+		
+		for (key in this.editDescr.createXul) {
+			this.editDescr.createXul[key](this.viewEl, this.editEl);
+		}
+	},
+	
+	_generateViewXul: function() {
+		var vbox = newXulEl('vbox');
+		
+		var box = newXulEl('box', { 'flex': 1 });
+		vbox.appendChild(box);
+		
+		var statusbar = newXulEl('statusbar', { 'class': 'details-satusbar' });
+		vbox.appendChild(statusbar);
+		
+		var statusbarpanel = newXulEl('statusbarpanel');
+		statusbar.appendChild(statusbarpanel);
+		
+		var spacer = newXulEl('spacer', { 'flex': 1 });
+		statusbar.appendChild(spacer);
+		
+		this.editButton = newXulEl('button', {
+			'label': 'Edit',
+			'class': 'flat'
 		});
+		statusbarpanel.appendChild(this.editButton);
+		
+		this.viewEl = box;
+		
+		return vbox;
+	},
+	
+	_generateEditXul: function() {
+		var vbox = newXulEl('vbox');
+		
+		var box = newXulEl('box', { 'flex': 1 });
+		vbox.appendChild(box);
+		
+		var statusbar = newXulEl('statusbar', { 'class': 'details-satusbar' });
+		vbox.appendChild(statusbar);
+		
+		var statusbarpanel = newXulEl('statusbarpanel');
+		statusbar.appendChild(statusbarpanel);
+		
+		var spacer = newXulEl('spacer', { 'flex': 1 });
+		statusbar.appendChild(spacer);
+		
+		this.doneButton = newXulEl('button', {
+			'label': 'Done',
+			'class': 'flat'
+		});
+		statusbarpanel.appendChild(this.doneButton);
+		
+		this.editEl = box;
+		
+		return vbox;
 	},
 	
 	setObject: function(object) {
 		alert(object);
-		var src = null;
-		if (this.isEditing()) {
-			src = this.editDescr.get;
-		} else {
-			src = this.detailsViewDescr.cells;
-		}
-		for (key in this.detailsViewDescr.cells) {
-			this.dataElements[this.deck.selectedIndex][key].value = src[key](object);
+		for (key in this.editDescr.show) {
+			this.editDescr.show[key](object);
 		}
 	},
 	
@@ -208,14 +298,26 @@ var ImpelClassDetailsView = new Class({
 	
 	getEditDescr: function() {
 		return this.editDescr;
+	},
+	
+	getEditButton: function() {
+		return this.editButton;
+	},
+	
+	getDoneButton: function() {
+		return this.doneButton;
 	}
 });
 
 var ImpelClassListDetailsController = new Class({
-	initialize: function(listView, detailsView) {
-		this.listView = listView;
-		this.detailsView = detailsView;
-		this.editDescr = detailsView.getEditDescr();
+	initialize: function(listViewDescr, editDescr) {
+		
+		this.generateXul();
+		
+		this.listView = new ImpelClassListView(listViewDescr, this.listEl);
+		this.detailsView = new ImpelClassDetailsView(editDescr, this.detailsEl);
+
+		this.editDescr = editDescr;
 		
 		this.editingNew = false;
 		
@@ -224,10 +326,25 @@ var ImpelClassListDetailsController = new Class({
 		this.attach();
 	},
 	
+	generateXul: function() {
+		this.el = newXulEl('box', { 'flex': 1 });
+
+		this.listEl = newXulEl('vbox', { 'flex': 1 });
+		this.el.appendChild(this.listEl);
+		
+		var splitter = newXulEl('splitter', { 'state': 'open' });
+		splitter.appendChild(newXulEl('spacer', { 'flex': 1 }));
+		splitter.appendChild(newXulEl('statusbar', { 'class': 'middle' }));
+		this.el.appendChild(splitter);
+		
+		this.detailsEl = newXulEl('deck', { 'selectedIndex': 0 });
+		this.el.appendChild(this.detailsEl);
+		
+	},
+	
 	setModelObjects: function(objs) {
 		this.modelObjects = objs.slice(0);
 		this.listView.setObjects(objs);
-		statusbarController.setStatus(objs.length + " Objekte");
 	},
 	
 	createNewModelObject: function() {
@@ -242,10 +359,10 @@ var ImpelClassListDetailsController = new Class({
 		
 		this.detailsView.addEvent('change', this.onChange.bind(this));
 		
-		$('edit-button').addEvent('click', this.onEdit.bind(this));
-		$('done-button').addEvent('click', this.onEditDone.bind(this));
+		this.detailsView.getEditButton().addEvent('click', this.onEdit.bind(this));
+		this.detailsView.getDoneButton().addEvent('click', this.onEditDone.bind(this));
 		
-		$('new-button').addEvent('click', this.onNew.bind(this));
+		this.listView.getNewButton().addEvent('click', this.onNew.bind(this));
 	},
 	
 	startEdit: function() {
@@ -262,6 +379,7 @@ var ImpelClassListDetailsController = new Class({
 		// TODO : error handling
 		this.modelObjects[this.currentIndex].save();
 				
+		this.listView.setObject(this.currentIndex, this.modelObjects[this.currentIndex]);
 		this.listView.activate();
 	},
 	
@@ -272,7 +390,9 @@ var ImpelClassListDetailsController = new Class({
 	},
 	
 	onListSelect: function(tree) {
-		this.currentIndex = tree.wrappedJSObject.currentIndex;
+		this.currentIndex = tree.currentIndex;
+		alert(this.modelObjects);
+		alert(this.modelObjects[this.currentIndex]);
 		this.detailsView.setObject(this.modelObjects[this.currentIndex]);
 	},
 	
@@ -289,5 +409,9 @@ var ImpelClassListDetailsController = new Class({
 		this.listView.select(this.modelObjects.length-1);
 		this.editingNew = true;
 		this.startEdit();
+	},
+	
+	getElement: function() {
+		return this.el;
 	}
 });

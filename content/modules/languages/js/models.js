@@ -18,7 +18,6 @@ var KuhPeer = new ImpelPeer({
 });
 */
 
-
 var Language = new Class({
 	Extends: ImpelClass,
 	peer_class: "LanguagePeer",
@@ -57,3 +56,4 @@ KuhPeer.doSelect(c, function(kuhs) {
 		window.alert(kuh.getId());
 	});
 }); */
+
