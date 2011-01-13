@@ -6,6 +6,11 @@ function ModelManager(modelDef) {
 	this._model = modelDef;
 }
 
+/**
+ * Saves a model instance to the db.
+ * @param modelInstance The model instance to save
+ * @param onComplete {Function} callback function that is called when instance has been saved. Takes the saved instance as parameter.
+ */
 ModelManager.prototype.save = function(modelInstance, onComplete) {
 	var values = [];
 	var cols = []
@@ -22,50 +27,93 @@ ModelManager.prototype.save = function(modelInstance, onComplete) {
 	var primKey = modelInstance._model.Meta.primaryKey;
 	
 	if (modelInstance._new) {
-		function insertNew() {
-			db.transaction(function (tx) {
-				var query = "INSERT INTO " + tableName + " (" + cols.join(",") + ") VALUES (" + values.join(",") + ")";
-				tx.executeSql(query, [], function(tx, result) {
-					modelInstance._new = false;
-					modelInstance._old_id = modelInstance[primKey];
-					onComplete(modelInstance);
-				});
-			});
-		}
-		
-		db.transaction(function (tx) {
-			if (!modelInstance[primKey]) {
-				tx.executeSql('SELECT MAX(' + primKey + ') + 1 AS nk FROM ' + tableName, [], function(tx, result) {
-					var nk = result.rows.item(0).nk;
-					alert(nk);
-					values[cols.indexOf(primKey)] = nk;
-					modelInstance[primKey] = nk;
-
-					insertNew();
-				});
-			} else {
-				insertNew();
-			}
-		});
+		this._saveNew(tableName, primKey, modelInstance, cols, values, onComplete);
 	} else {
-		if (!modelInstance[primKey]) {
-			throw "Invalid value of Primary Key '" + primKey + "'";
-		}
-		query = "UPDATE " + tableName + " SET ";
-		var assigns = [];
-		for (var i = 0; i < cols.length; ++i) {
-			assigns.push(cols[i] + '=' + values[i]);
-		}
-		query += assigns.join(',') + " WHERE " + primKey + "=" + modelInstance._model[primKey].toSql(modelInstance._old_id);
+		this._saveExisting(tableName, primKey, modelInstance, cols, values, onComplete);
+	}
+}
+
+/**
+ * Saves an existing (already in db) model instance to the db.
+ */
+ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstance, cols, values, onComplete) {
+	if (!modelInstance[primKey]) {
+		throw "Invalid value of Primary Key '" + primKey + "'";
+	}
+	query = "UPDATE " + tableName + " SET ";
+	var assigns = [];
+	for (var i = 0; i < cols.length; ++i) {
+		assigns.push(cols[i] + '=' + values[i]);
+	}
+	query += assigns.join(',') + " WHERE " + primKey + "=" + modelInstance._model[primKey].toSql(modelInstance._old_id);
+	db.transaction(function (tx) {
+		tx.executeSql(query, function(tx, result) {
+			modelInstance._old_id = modelInstance[primKey];
+			onComplete(modelInstance);
+		});
+	});
+}
+
+/**
+ * Saves a new (not in db yet) model instance to the db.
+ */
+ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, cols, values, onComplete) {
+	function insertNew() {
 		db.transaction(function (tx) {
-			tx.executeSql(query, function(tx, result) {
+			var query = "INSERT INTO " + tableName + " (" + cols.join(",") + ") VALUES (" + values.join(",") + ")";
+			tx.executeSql(query, [], function(tx, result) {
+				modelInstance._new = false;
 				modelInstance._old_id = modelInstance[primKey];
 				onComplete(modelInstance);
 			});
 		});
 	}
+	
+	db.transaction(function (tx) {
+		if (!modelInstance[primKey]) {
+			tx.executeSql('SELECT MAX(' + primKey + ') + 1 AS nk FROM ' + tableName, [], function(tx, result) {
+				var nk = result.rows.item(0).nk;
+				alert(nk);
+				values[cols.indexOf(primKey)] = nk;
+				modelInstance[primKey] = nk;
+
+				insertNew();
+			});
+		} else {
+			insertNew();
+		}
+	});
 }
 
+/**
+ * Extracts model instances from result rows of a database query.
+ */
+ModelManager.prototype._extractModelInstances = function(rows, modelDef) {
+	var len = rows.length;
+
+	var instances = [];
+	for (var i = 0; i < len; ++i) {
+		var item = rows.item(i);
+		var instance = {};
+		Model._initInstance.call(instance, modelDef, this, item);
+		instances.push(instance);
+	}
+	return instances;
+}
+
+/**
+ * Fetches all instances of the model which are in the db.
+ * @param onComplete Callback that is called with a list of all instances.
+ */
+ModelManager.prototype.all = function(onComplete) {
+	var self = this;
+	db.transaction(function (tx) {
+		tx.executeSql("SELECT * FROM " + self._model.Meta.dbTable, [], function(tx, result) {
+			var instances = self._extractModelInstances(result.rows, self._model);
+			onComplete(instances);
+		});
+	});
+}
 
 /**
  * Meta Model object.
@@ -80,42 +128,48 @@ function Model(modelDef) {
 	if (!modelDef.Meta.dbTable) {
 		throw "Meta table name missing";
 	}
+	Model._completeMetaInfo(modelDef);
 	
 	var modelManager = new ModelManager(modelDef);
 	
 	// create model instance constructor
 	var newModel = function(values) {
-		Model._completeMetaInfo(modelDef);
-		
-		this._model = modelDef;
-		this._manager = modelManager;
-		
 		this._new = true;
 		
-		// init fields
-		for (name in modelDef) {
-			if (name != "Meta") {
-				this[name] = null;
-			}
-		}
-		
-		// assign initial values
-		for (name in values) {
-			if (this[name] === null) {
-				this[name] = values[name];
-			} else {
-				throw "Model has no field named '" + name + "'";
-			}
-		}
-		
-		// create methods
-		this.save = Model._save;
-		this.validate = Model._validate;
+		Model._initInstance.call(this, modelDef, modelManager, values);
 	}
 	
 	newModel.objects = modelManager;
 	
 	return newModel;
+}
+
+/**
+ * Initializes a new model instance.
+ */
+Model._initInstance = function(modelDef, modelManager, values) {
+	this._model = modelDef;
+	this._manager = modelManager;
+	
+	// init fields
+	for (name in modelDef) {
+		if (name != "Meta") {
+			this[name] = null;
+		}
+	}
+	
+	// assign initial values
+	for (name in values) {
+		if (this[name] === null) {
+			this[name] = values[name];
+		} else {
+			throw "Model has no field named '" + name + "'";
+		}
+	}
+	
+	// create methods
+	this.save = Model._save;
+	this.validate = Model._validate;
 }
 
 /**
