@@ -3,15 +3,20 @@ var PageManager = new Class({
 	initialize: function() {
 		this.sidebarEl = $('sidebar');
 		this.contentDeckEl = $('main-content-deck');
+		
+		this.searchEl = $('search-textbox');
+		this.searchData = [];
 	},
 
-	append: function(name, category, pageEl) {
+	append: function(name, category, pageEl, searchLabel, searchHandler) {
 		// append to sidebar
 		var catEl = this._getCategoryEl(category);
 		var buttonEl = this._createSidebarButton(name);
 		this.sidebarEl.insertBefore(buttonEl, catEl);
 		
 		this.contentDeckEl.adopt(pageEl);
+		
+		this.searchData.push([searchLabel, searchHandler]);
 		
 		this._attachEvents(buttonEl);
 	},
@@ -44,9 +49,18 @@ var PageManager = new Class({
 	
 	_attachEvents: function(buttonEl) {
 		buttonEl.deckIndex = this.contentDeckEl.getChildren().length - 1;
-		buttonEl.oncommand = function() {
+		buttonEl.addEvent('click', function() {
 			this.contentDeckEl.selectedIndex = buttonEl.deckIndex;
-		};
+			var searchData = this.searchData[buttonEl.deckIndex];
+			this.searchEl.set('emptytext', searchData[0]);
+			this.searchEl.set('value', this.searchEl.get('value'));
+			this.searchEl.removeEvents('keydown');
+			this.searchEl.addEvent('keydown', function(event) {
+				if (event.key == 'enter') {
+					searchData[1](this.searchEl.get('value'));
+				}
+			}.bind(this));
+		}.bind(this));
 	},
 });
 

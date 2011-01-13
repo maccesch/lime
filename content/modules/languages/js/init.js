@@ -1,24 +1,29 @@
 
 (function() {
 
-	var initLanguages = function() {
-		var objs = [];
-		for (var i = 0; i < 100; ++i) {
-			var lang = new Language();
-			lang.setName('Lieselotte ' + i);
-			lang.setShortcut('L' + i);
-			objs.push(lang);
-		}
-		
-		var listViewDescr = createDefaultImpelClassListViewDescr(LanguagePeer);
-		var editDescr = createDefaultImpelClassEditDescr(LanguagePeer);
-		
-		var ctrl = new ImpelClassListDetailsController(listViewDescr, editDescr);
-		ctrl.setModelObjects(objs);
-		
-		return ctrl.getElement();
+	var listViewDescr = createDefaultListViewDescr(['name', 'shortcut']);
+	var editDescr = createDefaultEditDescr(['name', 'shortcut']);
+
+	function fetchAllLanguages(tx) {
+		tx.executeSql('SELECT * FROM languages;', [], function(tx, results) {
+			var len = results.rows.length;
+
+			var objs = [];
+			for (var i = 0; i < len; ++i) {
+				objs.push(results.rows.item(i));
+			}
+			
+			var ctrl = new ListDetailsController(listViewDescr, editDescr);
+			ctrl.setModelObjects(objs);
+			
+			PageManager.getInstance().append('Sprachen', 'Basisdaten', ctrl, 'Suche in Sprachen', onSearch);
+		});
 	}
 	
-	PageManager.getInstance().append('Languages', 'Basic Data', initLanguages());
-
+	db.transaction(fetchAllLanguages);
+	
+	function onSearch(searchStr) {
+		alert(searchStr);
+	}
+	
 })();

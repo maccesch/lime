@@ -47,9 +47,7 @@ var WebDatabase = function(name, version, description) {
     
 	this.dbCon = storageService.openUnsharedDatabase(file);
 	if (!this.dbCon) {
-		if (console) {
-			console.error("Couldn't connect to database.");
-		}
+		throw "Couldn't connect to database.";
 	}
 }
 
@@ -90,7 +88,8 @@ WebDatabase.Transaction.prototype.executeSql = function(queryStr, parameters, re
 		}
 		queryStr = resultStr;
 	}
-	
+
+//	alert(queryStr);
 	var statement = this.dbCon.createStatement(queryStr);
 
 	var self = this;
@@ -115,11 +114,11 @@ WebDatabase.Transaction.prototype.executeSql = function(queryStr, parameters, re
 		
 		handleCompletion: function(reason) {
 			if (reason != Components.interfaces.mozIStorageStatementCallback.REASON_FINISHED) {
-				if (console) {			
-					console.error("Query canceled or aborted!");
-				}
+				throw "Query canceled or aborted!";
 			}
-			resultsCallback(self, results);
+			if (resultsCallback) {
+				resultsCallback(self, results);
+			}
 			
 		}
 	});

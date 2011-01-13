@@ -5,12 +5,12 @@
  * Just gives all columns of the ImpelClass.
  * @param {ImpelPeer} modelPeer The model peer instance to construct the list view from.
  */
-function createDefaultImpelClassListViewDescr(modelPeer, options) {
+function createDefaultListViewDescr(columns, options) {
 	var viewDescr = {
 		cells: {}
 	};
-	modelPeer.getColumns().each(function(col) {
-		var key = col.split('.')[1];
+	columns.each(function(col) {
+		var key = col;
 		viewDescr.cells[key] = function(modelEl) {
 			return modelEl['get' + key[0].toUpperCase() + key.substr(1)]();
 		}
@@ -18,20 +18,21 @@ function createDefaultImpelClassListViewDescr(modelPeer, options) {
 	return viewDescr;
 }
 
-function createDefaultImpelClassEditDescr(modelPeer, options) {
+function createDefaultEditDescr(columns, options) {
 	var editDescr = {
 		save: {},
 		get: {},
 		show: {},
 		createXul: {},
 		create: function() {
-			return eval('new ' + modelPeer.getBaseObjName() + '();');
+			// TODO : implement
+			return {};
 		},
 		_viewValueEl: {},
 		_editValueEl: {}
 	}
-	modelPeer.getColumns().each(function(col) {
-		var key = col.split('.')[1];
+	columns.each(function(col) {
+		var key = col;
 		var keyUp = key[0].toUpperCase() + key.substr(1);
 		
 		editDescr.get[key] = function(modelEl) {
@@ -39,36 +40,45 @@ function createDefaultImpelClassEditDescr(modelPeer, options) {
 		}
 		
 		editDescr.show[key] = function(modelEl) {
-			alert(key);
 			var value = editDescr.get[key](modelEl);
 			editDescr._viewValueEl[key].setAttribute('value', value);
 			editDescr._editValueEl[key].setAttribute('value', value);
 		}
 		
-		editDescr.save[key] = function(modelEl, value) {
+		editDescr.save[key] = function(modelEl) {
+			var value = editDescr._editValueEl[key].value;
 			return modelEl['set' + keyUp](value);
 		}
 		
 		editDescr.createXul[key] = function(viewEl, editEl) {
+			// view details
+			var box = newXulEl('box');
+			viewEl.appendChild(box);
+			
 			var attrs = {
 				'value': keyUp,
 				'class': 'details-label'
 			};
 			
-			var label1 = newXulEl('label', attrs);
-			var label2 = newXulEl('label', attrs);
-			viewEl.appendChild(label1);
-			editEl.appendChild(label2);
+			var label = newXulEl('label', attrs);
+			box.appendChild(label);
 			
 			editDescr._viewValueEl[key] = newXulEl('label', {
 				'class': 'details-view-value'
 			});
-			viewEl.appendChild(editDescr._viewValueEl[key]);
-			
+			box.appendChild(editDescr._viewValueEl[key]);
+
+			// edit details
+			box = newXulEl('box');
+			editEl.appendChild(box);
+
+			label = newXulEl('label', attrs);
+			box.appendChild(label);
+
 			editDescr._editValueEl[key] = newXulEl('textbox', {
 				'class': 'details-edit-value'
 			});
-			editEl.appendChild(editDescr._editValueEl[key]);
+			box.appendChild(editDescr._editValueEl[key]);
 		}
 	});
 	return editDescr;
@@ -77,7 +87,7 @@ function createDefaultImpelClassEditDescr(modelPeer, options) {
 /*
  * Events: select
  */
-var ImpelClassListView = new Class({
+var ListView = new Class({
 	Implements: Events,
 	
 	initialize: function(listViewDescr, parentEl) {
@@ -90,7 +100,7 @@ var ImpelClassListView = new Class({
 			this.fireEvent('select', this.tree);
 		}.bind(this));
 		
-		ImpelClassListView.instanceNo += 1;
+		ListView.instanceNo += 1;
 	},
 	
 	generateXul: function(parentEl) {
@@ -106,7 +116,7 @@ var ImpelClassListView = new Class({
 				'label': key,
 				'flex': 1,
 				'persist': 'width hidden',
-				'id': ImpelClassListView.instanceNo + '-list-view',
+				'id': ListView.instanceNo + '-list-view',
 				'key': key
 			});
 			cols.appendChild(col);
@@ -139,7 +149,7 @@ var ImpelClassListView = new Class({
 		statusbar.appendChild(statusbarpanel);
 		
 		this.newButton = newXulEl('button', {
-			'label': 'New',
+			'label': 'Neu',
 			'class': 'flat'
 		});
 		statusbarpanel.appendChild(this.newButton);
@@ -199,10 +209,10 @@ var ImpelClassListView = new Class({
 	}
 });
 
-ImpelClassListView.instanceNo = 0;
+ListView.instanceNo = 0;
 
 
-var ImpelClassDetailsView = new Class({
+var DetailsView = new Class({
 	Implements: Events,
 	
 	initialize: function(editDescr, deckEl) {
@@ -228,7 +238,7 @@ var ImpelClassDetailsView = new Class({
 	_generateViewXul: function() {
 		var vbox = newXulEl('vbox');
 		
-		var box = newXulEl('box', { 'flex': 1 });
+		var box = newXulEl('vbox', { 'flex': 1 });
 		vbox.appendChild(box);
 		
 		var statusbar = newXulEl('statusbar', { 'class': 'details-satusbar' });
@@ -241,7 +251,7 @@ var ImpelClassDetailsView = new Class({
 		statusbar.appendChild(spacer);
 		
 		this.editButton = newXulEl('button', {
-			'label': 'Edit',
+			'label': 'Bearbeiten',
 			'class': 'flat'
 		});
 		statusbarpanel.appendChild(this.editButton);
@@ -254,7 +264,7 @@ var ImpelClassDetailsView = new Class({
 	_generateEditXul: function() {
 		var vbox = newXulEl('vbox');
 		
-		var box = newXulEl('box', { 'flex': 1 });
+		var box = newXulEl('vbox', { 'flex': 1 });
 		vbox.appendChild(box);
 		
 		var statusbar = newXulEl('statusbar', { 'class': 'details-satusbar' });
@@ -267,7 +277,7 @@ var ImpelClassDetailsView = new Class({
 		statusbar.appendChild(spacer);
 		
 		this.doneButton = newXulEl('button', {
-			'label': 'Done',
+			'label': 'OK',
 			'class': 'flat'
 		});
 		statusbarpanel.appendChild(this.doneButton);
@@ -278,7 +288,6 @@ var ImpelClassDetailsView = new Class({
 	},
 	
 	setObject: function(object) {
-		alert(object);
 		for (key in this.editDescr.show) {
 			this.editDescr.show[key](object);
 		}
@@ -309,13 +318,13 @@ var ImpelClassDetailsView = new Class({
 	}
 });
 
-var ImpelClassListDetailsController = new Class({
+var ListDetailsController = new Class({
 	initialize: function(listViewDescr, editDescr) {
 		
 		this.generateXul();
 		
-		this.listView = new ImpelClassListView(listViewDescr, this.listEl);
-		this.detailsView = new ImpelClassDetailsView(editDescr, this.detailsEl);
+		this.listView = new ListView(listViewDescr, this.listEl);
+		this.detailsView = new DetailsView(editDescr, this.detailsEl);
 
 		this.editDescr = editDescr;
 		
@@ -337,13 +346,17 @@ var ImpelClassListDetailsController = new Class({
 		splitter.appendChild(newXulEl('statusbar', { 'class': 'middle' }));
 		this.el.appendChild(splitter);
 		
-		this.detailsEl = newXulEl('deck', { 'selectedIndex': 0 });
+		this.detailsEl = newXulEl('deck', {
+			'selectedIndex': 0,
+			'flex': 0
+		});
 		this.el.appendChild(this.detailsEl);
 		
 	},
 	
 	setModelObjects: function(objs) {
 		this.modelObjects = objs.slice(0);
+
 		this.listView.setObjects(objs);
 	},
 	
@@ -357,7 +370,7 @@ var ImpelClassListDetailsController = new Class({
 
 		this.listView.addEvent('select', this.onListSelect.bind(this));
 		
-		this.detailsView.addEvent('change', this.onChange.bind(this));
+//		this.detailsView.addEvent('change', this.onChange.bind(this));
 		
 		this.detailsView.getEditButton().addEvent('click', this.onEdit.bind(this));
 		this.detailsView.getDoneButton().addEvent('click', this.onEditDone.bind(this));
@@ -368,18 +381,24 @@ var ImpelClassListDetailsController = new Class({
 	startEdit: function() {
 		this.listView.deactivate();
 		this.detailsView.startEdit();
-		this.detailsView.setObject(this.modelObjects[this.currentIndex]);
+//		this.detailsView.setObject(this.modelObjects[this.currentIndex]);
 	},
 	
 	stopEdit: function() {
-		this.detailsView.stopEdit();
-		this.detailsView.setObject(this.modelObjects[this.currentIndex]);
-		this.editingNew = false;
+		var curObj = this.modelObjects[this.currentIndex];
 		
+		for (key in this.editDescr.save) {
+			this.editDescr.save[key](curObj);
+		}
+
 		// TODO : error handling
-		this.modelObjects[this.currentIndex].save();
+//		this.modelObjects[this.currentIndex].save();
+
+		this.detailsView.stopEdit();
+		this.detailsView.setObject(curObj);
+		this.editingNew = false;
 				
-		this.listView.setObject(this.currentIndex, this.modelObjects[this.currentIndex]);
+		this.listView.setObject(this.currentIndex, curObj);
 		this.listView.activate();
 	},
 	
@@ -391,8 +410,6 @@ var ImpelClassListDetailsController = new Class({
 	
 	onListSelect: function(tree) {
 		this.currentIndex = tree.currentIndex;
-		alert(this.modelObjects);
-		alert(this.modelObjects[this.currentIndex]);
 		this.detailsView.setObject(this.modelObjects[this.currentIndex]);
 	},
 	

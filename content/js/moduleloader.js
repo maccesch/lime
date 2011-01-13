@@ -5,7 +5,7 @@
 		
 		var initScript = newXulEl('script', {
 			'src': path + 'js/init.js',
-			'type': 'text/javascript'
+			'type': 'application/x-javascript'
 		});
 		
 		loadScript(path + 'js/models.js');
