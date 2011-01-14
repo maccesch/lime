@@ -43,13 +43,30 @@ function createDefaultEditDescr(model) {
 		var keyUp = key[0].toUpperCase() + key.substr(1);
 
 		editDescr.get[key] = function(modelEl) {
-			return modelEl[key];
+			if (modelEl['get' + keyUp + 'Display']) {
+				return modelEl['get' + keyUp + 'Display']();
+			} else {
+				return modelEl[key];
+			}
 		}
 
 		editDescr.show[key] = function(modelEl) {
 			var value = editDescr.get[key](modelEl);
 			editDescr._viewValueEl[key].setAttribute('value', value);
-			editDescr._editValueEl[key].setAttribute('value', value);
+//			editDescr._editValueEl[key].setAttribute('value', value);
+			var editEl = editDescr._editValueEl[key];
+			if (editEl.nodeName == 'menulist') {
+				var options = editEl.firstChild.childNodes;
+				for (var i = 0; i < options.length; ++i) {
+					if (options[i].label == value.toString()) {
+						dump("hier");
+						editEl.selectedIndex = i;
+						break;
+					}
+				}
+			} else {
+				editEl.value = value;
+			}
 		}
 
 		editDescr.save[key] = function(modelEl) {
@@ -118,6 +135,10 @@ var InputFactory = {
 	createInput : function(field, attrs) {
 		attrs = Object.merge(attrs, this.createAttrs(field));
 
+		if (field.getParams()['choices']) {
+			return this.createMenuList(field, attrs);
+		}
+		
 		if (field instanceof CharField) {
 			return this.createTextInput(field, attrs);
 		} else if (field instanceof IntegerField) {
@@ -130,6 +151,41 @@ var InputFactory = {
 	createTextInput : function(field, params) {
 		var input = newXulEl('textbox', params);
 		return input;
+	},
+	
+	createMenuList: function(field, params) {
+		var ml = newXulEl('menulist', params);
+		var mpop = newXulEl('menupopup');
+		ml.appendChild(mpop);
+		
+		var sel = -1;
+		var defaultVal;
+		
+		var fieldParams = field.getParams();
+		if (fieldParams['default']) {
+			defaultVal = fieldParams.default;
+		}
+		if (fieldParams['null']) {
+			var item = newXulEl('menuitem', {
+				value: 'null',
+				label: '-----'
+			});
+			mpop.appendChild(item);
+		}
+		
+		fieldParams.choices.each(function(choice, index) {
+			if (defaultVal === choice[0]) {
+				sel = index;
+			}
+			item = newXulEl('menuitem', {
+				value: choice[0],
+				label: choice[1]
+			});
+			mpop.appendChild(item);
+		});
+		ml.selectedIndex = sel;
+		
+		return ml;
 	}
 }
 

@@ -1,5 +1,6 @@
 INSTALLED_MODULES = [ 
-	'languages'
+	'languages',
+	'literature'
 ];
 
 DATABASE_NAME = 'limedb'

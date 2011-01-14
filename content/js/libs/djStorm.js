@@ -3,7 +3,7 @@
  * @param modelDef {Object} The model definition, i.e. fields
  */
 function ModelManager(modelDef) {
-	QuerySet.call(this, modelDef);
+	QuerySet.call(this, modelDef, this);
 }
 
 ModelManager.prototype = new QuerySet();
@@ -90,8 +90,9 @@ ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, co
 /**
  * Class that represents a list of model instances that are retrieved by a database query.
  */
-function QuerySet(modelDef) {
+function QuerySet(modelDef, manager) {
 	this._model = modelDef;
+	this._manager = manager;
 	
 	this._where = "";
 	this._extra = "";
@@ -104,7 +105,7 @@ function QuerySet(modelDef) {
  * Creates a deep copy of this object.
  */
 QuerySet.prototype.clone = function() {
-	var newQs = new QuerySet(this._model);
+	var newQs = new QuerySet(this._model, this._manager);
 	
 	newQs._where = this._where;
 	newQs._extra = this._extra;
@@ -122,7 +123,7 @@ QuerySet.prototype._extractModelInstances = function(rows, modelDef) {
 	for (var i = 0; i < len; ++i) {
 		var item = rows.item(i);
 		var instance = {};
-		Model._initInstance.call(instance, modelDef, this, item);
+		Model._initInstance.call(instance, modelDef, this._manager, item);
 		instances.push(instance);
 	}
 	return instances;
@@ -272,6 +273,12 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 	var index = whereStr.indexOf('${');
 	while (index >= 0) {
 		var col = whereStr.substr(index + 2).split('}', 1)[0];
+		var len = col.length;
+		
+		if (col == "pk") {
+			col = this._model.Meta.primaryKey;
+		}
+		
 		var val = values[i++];
 
 		if (!this._model[col]) {
@@ -288,7 +295,7 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 			val = this._model[col].toSql(val);
 		}
 		
-		whereStr = whereStr.substring(0, index) + val + whereStr.substr(index + col.length + 3);
+		whereStr = whereStr.substring(0, index) + val + whereStr.substr(index + len + 3);
 		
 		var index = whereStr.indexOf('${', index + 1);
 	}
@@ -387,6 +394,19 @@ Model._initInstance = function(modelDef, modelManager, values) {
 	for (name in modelDef) {
 		if (name != "Meta") {
 			this[name] = null;
+			
+			// create get<Name>Display() method for fields with choices.
+			if (modelDef[name].getParams()['choices']) {
+				var choices = modelDef[name].getParams()['choices'];
+				var choicesObj = {};
+				for (var i = 0; i < choices.length; ++i) {
+					choicesObj[choices[i][0]] = choices[i][1];
+				}
+				this['_' + name + 'Choices'] = choicesObj;
+				this['get' + name[0].toUpperCase() + name.substr(1) + 'Display'] = function() {
+					return this['_' + name + 'Choices'][this[name]];
+				}
+			}
 		}
 	}
 	
@@ -439,6 +459,7 @@ Model._save = function(onComplete) {
 		throw validationValue;
 	}
 	
+	dump(this._manager.toSource());
 	this._manager.save(this, onComplete);
 }
 
@@ -507,6 +528,7 @@ Field.prototype.getParams = function() {
 
 
 function CharField(params) {
+	params = params || {};
 	params.maxLength = params.maxLength || 255;
 	Field.call(this, params);
 	
@@ -534,7 +556,7 @@ IntegerField.prototype.validate = function(value) {
 	if (isNaN(value)) {
 		return "Value is not a valid integer";
 	}
-	if (this._params[primaryKey] && !value) {
+	if (this._params['primaryKey'] && !value) {
 		return true;
 	}
 	return Field.prototype.validate(value);

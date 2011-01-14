@@ -14,6 +14,10 @@ var PageManager = new Class({
 		var buttonEl = this._createSidebarButton(name);
 		this.sidebarEl.insertBefore(buttonEl, catEl);
 		
+		if (!this['_firstButton']) {
+			this._firstButton = buttonEl;
+		}
+		
 		this.contentDeckEl.adopt(pageEl);
 		
 		this.searchData.push([searchLabel, searchHandler]);
@@ -62,6 +66,10 @@ var PageManager = new Class({
 			}.bind(this));
 		}.bind(this));
 	},
+	
+	init: function() {
+		this._firstButton.click();
+	}
 });
 
 PageManager.getInstance = function() {

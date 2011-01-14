@@ -12,8 +12,12 @@
 		loadScript(path + 'js/init.js');
 	}
 	
+	// click first sidebar button
 	window.addEvent('load', function() {
 		INSTALLED_MODULES.each(loadModule);
+		window.setTimeout(function() {
+			PageManager.getInstance().init();
+		} ,100);
 	});
 })();
 
