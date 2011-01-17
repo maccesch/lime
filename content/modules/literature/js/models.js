@@ -19,7 +19,8 @@ var LiteratureType;
 		title: new CharField(),
 		shortcut: new CharField({ maxLength: 5 }),
 		orderId: new CharField({ maxLength: 10, primaryKey: true }),
-		type: new IntegerField({ choices: TYPE_CHOICES })
+		type: new IntegerField({ choices: TYPE_CHOICES }),
+		language: new ForeignKey(Language)
 	});
 
 })();

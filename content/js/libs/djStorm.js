@@ -1,6 +1,8 @@
 /**
  * Model Manager object
- * @param modelDef {Object} The model definition, i.e. fields
+ * 
+ * @param modelDef
+ *            {Object} The model definition, i.e. fields
  */
 function ModelManager(modelDef) {
 	QuerySet.call(this, modelDef, this);
@@ -10,8 +12,12 @@ ModelManager.prototype = new QuerySet();
 
 /**
  * Saves a model instance to the db.
- * @param modelInstance The model instance to save
- * @param onComplete {Function} callback function that is called when instance has been saved. Takes the saved instance as parameter.
+ * 
+ * @param modelInstance
+ *            The model instance to save
+ * @param onComplete
+ *            {Function} callback function that is called when instance has been
+ *            saved. Takes the saved instance as parameter.
  */
 ModelManager.prototype.save = function(modelInstance, onComplete) {
 	var values = [];
@@ -88,7 +94,8 @@ ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, co
 }
 
 /**
- * Class that represents a list of model instances that are retrieved by a database query.
+ * Class that represents a list of model instances that are retrieved by a
+ * database query.
  */
 function QuerySet(modelDef, manager) {
 	this._model = modelDef;
@@ -96,6 +103,7 @@ function QuerySet(modelDef, manager) {
 	
 	this._where = "";
 	this._extra = "";
+	this._joins = [];
 	
 	// TODO : implement caching
 	this._cache = null;
@@ -107,30 +115,71 @@ function QuerySet(modelDef, manager) {
 QuerySet.prototype.clone = function() {
 	var newQs = new QuerySet(this._model, this._manager);
 	
-	newQs._where = this._where;
-	newQs._extra = this._extra;
+	newQs._where = this._where.substr(0);
+	newQs._extra = this._extra.substr(0);
+	newQs._joins = this._joins.slice(0);
 	
 	return newQs;
 }
 
 /**
- * Extracts model instances from result rows of a database query.
+ * Extracts model instances from result rows of a database query. Calls callback
+ * with the extracted instances when done.
  */
-QuerySet.prototype._extractModelInstances = function(rows, modelDef) {
-	var len = rows.length;
+QuerySet.prototype._extractModelInstances = function(rows, modelDef, callback) {
 
+	function getCallback(instance, values, name) {
+		
+		return function converted(value) {
+			values[name] = value;
+			instance.__i -= 1;
+			if (instance.__i == 0) {
+				delete instance.__i;
+
+				Model._initInstance.call(instance, modelDef, this._manager, values);
+
+				instances.push(instance);
+				if (instances.length == len) {
+					callback(instances);
+				}
+			}
+		}
+	}
+
+	var len = rows.length;
+	
 	var instances = [];
 	for (var i = 0; i < len; ++i) {
 		var item = rows.item(i);
-		var instance = {};
-		Model._initInstance.call(instance, modelDef, this._manager, item);
-		instances.push(instance);
+		var instance = { __i: 0 };
+		var values = {}
+		
+		for (name in modelDef) {
+			if (name != "Meta") {
+				instance.__i += 1;
+				
+				var type = modelDef[name];
+				var dbCol = name;
+				if (type instanceof ForeignKey) {
+					dbCol = name + '_id';
+				}
+				values[name] = dbCol;
+			}
+		}
+		
+		for (name in modelDef) {
+			if (name != "Meta") {
+				var type = modelDef[name];
+				type.toJs(item[values[name]], getCallback(instance, values, name));
+			}
+		}
+		
 	}
-	return instances;
 }
 
 /**
- * Builds the where clause of the sql query, that fetches all instances that are represented by this queryset
+ * Builds the where clause of the sql query, that fetches all instances that are
+ * represented by this queryset
  */
 QuerySet.prototype._buildWhere = function() {
 	if (this._where.length > 0) {
@@ -140,7 +189,8 @@ QuerySet.prototype._buildWhere = function() {
 }
 
 /**
- * Builds the extra clauses (like GROUP BY or ORDER BY) of the sql query, that fetches all instances that are represented by this queryset
+ * Builds the extra clauses (like GROUP BY or ORDER BY) of the sql query, that
+ * fetches all instances that are represented by this queryset
  */
 QuerySet.prototype._buildExtra = function() {
 	if (this._extra.length > 0) {
@@ -150,25 +200,69 @@ QuerySet.prototype._buildExtra = function() {
 }
 
 /**
- * Fetches all instances of the model which are in the db. This method
- * actually hits the database and evaluates the query set.
- * @param onComplete Callback that is called with a list of all instances.
+ * Builds the tabe joins for the sql query
+ */
+QuerySet.prototype._buildJoins = function() {
+	var table = this._model.Meta.dbTable;
+	var from = table;
+	
+	for (var i = 0; i < this._joins.length; ++i) {
+		var join = this._joins[i];
+		var otherTable = join.model.Meta.dbTable;
+		from += " JOIN " + otherTable;
+		from += " ON (" + table + "." + join.columns + "_id=" + otherTable + "." + join.model.Meta.primaryKey + ")";
+		table = otherTable;
+	}
+	
+	return from;
+}
+
+/**
+ * Fetches the object that machtes the lookup parameters given by queryObj. The format of queryObj is the same as in filter().
+ * If no or more than one result is found, an exception is thrown.
+ * @param queryObj
+ *            field lookups or Q object.
+ * @param onComplete
+ *            Callback that is called with the fetched instance.
+ */
+QuerySet.prototype.get = function(queryObj, onComplete) {
+	this.filter(queryObj).all(function(results) {
+		if (result.length == 0) {
+			throw "No Object found"
+		} else if (result.length > 1) {
+			throw "More than one Object found"
+		} else {
+			onComplete(result[0]);
+		}
+	});
+}
+
+/**
+ * Fetches all instances of the model which are in the db. This method actually
+ * hits the database and evaluates the query set.
+ * 
+ * @param onComplete
+ *            Callback that is called with a list of all instances.
  */
 QuerySet.prototype.all = function(onComplete) {
 	var self = this;
 	db.transaction(function (tx) {
-		tx.executeSql("SELECT * FROM " + self._model.Meta.dbTable + self._buildWhere() + self._buildExtra(), [], function(tx, result) {
-			var instances = self._extractModelInstances(result.rows, self._model);
-			onComplete(instances);
+		var where = self._buildWhere();
+		var joins = self._buildJoins();
+		var extra = self._buildExtra();
+		tx.executeSql("SELECT " + self._model.Meta.dbTable + ".* FROM " + joins + where + extra, [], function(tx, result) {
+			self._extractModelInstances(result.rows, self._model, onComplete);
 		});
 	});
 }
 
-// TODO : foreign keys
 
 /**
- * Returns a QuerySet which represents all instances of the model which validate against queryObj. This QuerySet remains unchanged.
- * @param queryObj field lookups or Q object.
+ * Returns a QuerySet which represents all instances of the model which validate
+ * against queryObj. This QuerySet remains unchanged.
+ * 
+ * @param queryObj
+ *            field lookups or Q object.
  */
 QuerySet.prototype.filter = function(queryObj) {
 	var values = [];
@@ -179,19 +273,24 @@ QuerySet.prototype.filter = function(queryObj) {
 	} else {
 		whereStr = this.convertLookups(queryObj, values);
 	}
+	dump(whereStr);
 	whereStr = this._bindParameters(whereStr, values);
+	dump("zurück");
 	
 	var newQs = this.clone();
 	if (newQs._where.length > 0) {
 		newQs._where = "(" + newQs._where + ") AND ";
 	}
-	newQs._where += "(" + whereStr + ")"
+	newQs._where += "(" + whereStr + ")";
 	return newQs;
 }
 
 /**
- * Returns a QuerySet which represents all instances of the model which do NOT validate against queryObj. This QuerySet remains unchanged.
- * @param queryObj field lookups or Q object.
+ * Returns a QuerySet which represents all instances of the model which do NOT
+ * validate against queryObj. This QuerySet remains unchanged.
+ * 
+ * @param queryObj
+ *            field lookups or Q object.
  */
 QuerySet.prototype.exclude = function(queryObj) {
 	var newQs = this.filter(queryObj);
@@ -201,16 +300,18 @@ QuerySet.prototype.exclude = function(queryObj) {
 
 /**
  * Returns a new QuerySet that is ordered by the given fields.
+ * 
  * @example Entry.objects.orderBy('-pub_date', 'headline').all(...);
  */
 QuerySet.prototype.orderBy = function() {
+	// TODO : foreign keys
 	var orderList = [];
 	for (var i = 0; i < arguments.length; ++i) {
 		var a = arguments[i];
 		if (a[0] == "-") {
-			orderList.push(a.substr(1) + " DESC");
+			orderList.push(this._model.Meta.dbTable + "." + a.substr(1) + " DESC");
 		} else {
-			orderList.push(a + " ASC");
+			orderList.push(this._model.Meta.dbTable + "." + a + " ASC");
 		}
 	}
 	
@@ -227,8 +328,19 @@ QuerySet.prototype.convertLookups = function(queryObj, values) {
 	var wheres = [];
 	for (lookup in queryObj) {
 		var lus = lookup.split("__");
-		var col = lus[0];
-		var op = lus.length > 1 ? lus[1] : 'exact';
+		var col;
+		var op;
+		if (lus.length > 1) {
+			col = lus.slice(0, lus.length - 1).join('__');
+			op = lus[lus.length - 1];
+			if (!this._isLookupOp(op)) {
+				col = col + '__' + op;
+				op = 'exact';
+			}
+		} else {
+			col = lus[0];
+			op = 'exact';
+		}
 		
 		var val = queryObj[lookup];
 		values.push(val);
@@ -239,31 +351,40 @@ QuerySet.prototype.convertLookups = function(queryObj, values) {
 }
 
 /**
- * Builds a part of the sql where condition based on the columns, the lookup operation and the value.
+ * Returns true if op is a valid lookup operator
+ */
+QuerySet.prototype._isLookupOp = function(op) {
+	return ['exact', 'iexact', 'contains', 'icontains', 'in', 'gt', 'gte', 'lt', 'lte'].indexOf(op) >= 0;
+}
+
+/**
+ * Builds a part of the sql where condition based on the columns, the lookup
+ * operation and the value.
  */
 QuerySet.prototype._buildCondition = function(col, op) {
 	
-	var placeholder = "${" + col + '}';
+	var valPlaceholder = "${" + col + "}";
+	var colPlaceholder = "§{" + col + "}"
 	
 	if (op == 'exact') {
-		return col + " = " + placeholder + " COLLATE BINARY";
+		return colPlaceholder + " = " + valPlaceholder + " COLLATE BINARY";
 	} else if (op == 'iexact') {
-		return col + " = " + placeholder + " COLLATE NOCASE";
+		return colPlaceholder + " = " + valPlaceholder + " colPlaceholderLATE NOCASE";
 	} else if (op == 'contains') {
-		return col + " LIKE '%" + placeholder + "%'";
+		return colPlaceholder + " LIKE '%" + valPlaceholder + "%'";
 	} else if (op == 'icontains') {
 		// TODO : sqlite doesn't support ILIKE
-		return col + " LIKE '%" + placeholder + "%'";
+		return colPlaceholder + " LIKE '%" + valPlaceholder + "%'";
 	} else if (op == 'in') {
-		return col + " IN (" + placeholder + ")";
+		return colPlaceholder + " IN (" + valPlaceholder + ")";
 	} else if (op = 'gt') {
-		return col + ">" + placeholder;
+		return colPlaceholder + ">" + valPlaceholder;
 	} else if (op = 'gte') {
-		return col + ">=" + placeholder;
+		return colPlaceholder + ">=" + valPlaceholder;
 	} else if (op = 'lt') {
-		return col + "<" + placeholder;
+		return colPlaceholder + "<" + valPlaceholder;
 	} else if (op = 'lte') {
-		return col + "<=" + placeholder;
+		return colPlaceholder + "<=" + valPlaceholder;
 	}
 }
 
@@ -271,33 +392,61 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 	
 	var i = 0;
 	var index = whereStr.indexOf('${');
+	var colIndex = where.indexOf('§{');
 	while (index >= 0) {
-		var col = whereStr.substr(index + 2).split('}', 1)[0];
+		var orig = whereStr.substr(index + 2).split('}', 1)[0];
 		var len = col.length;
+		var model = this._model;
+		var col = orig;
+
+		// lookup spans multiple tables
+		if (col.indexOf('__') >= 0) {
+			var cols = col.split('__');
+			col = "pk";
+			
+			for (var j = 0; j < cols.length; ++j) {
+				var field = model[col];
+				if (!field) {
+					throw "Model does not have a field named '" + col + "'";
+				}
+				if (field instanceof ForeignKey) {
+					model = field._refModel.objects._model;
+					this._joins.push({
+						column: cols[j],
+						model: field._refModel.objects._model
+					});
+				} else {
+					col = cols[j];
+				}
+			}
+		}
 		
 		if (col == "pk") {
-			col = this._model.Meta.primaryKey;
+			col = model.Meta.primaryKey;
 		}
 		
 		var val = values[i++];
 
-		if (!this._model[col]) {
+		if (!model[col]) {
 			throw "Model does not have a field named '" + col + "'";
 		}
 
 		// format val for sql
 		if (val instanceof Array) {
 			for (var i = 0; i < val.length; ++i) {
-				val[i] = this._model[col].toSql(val[i]);
+				val[i] = model[col].toSql(val[i]);
 			}
 			val = val.join(',');
 		} else {
-			val = this._model[col].toSql(val);
+			val = model[col].toSql(val);
 		}
 		
-		whereStr = whereStr.substring(0, index) + val + whereStr.substr(index + len + 3);
+//		whereStr = whereStr.substring(0, index) + val + whereStr.substr(index + len + 3);
+		whereStr = whereStr.replace("${" + orig + "}", val);
+		whereStr = whereStr.replace("§{" + orig + "}", model.Meta.dbTable + "." + col);
 		
-		var index = whereStr.indexOf('${', index + 1);
+		index = whereStr.indexOf('${', index + 1);
+		colIndex = whereStr.indexOf('${', colIndex + 1);
 	}
 	
 	// remove additional quotes of LIKE clauses
@@ -308,10 +457,12 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 
 
 /**
- * Creates a lookup object. Used for complex lookups in QuerySet.filter() for example.
+ * Creates a lookup object. Used for complex lookups in QuerySet.filter() for
+ * example.
+ * 
  * @queryObj lookups like in QuerySet.filter()
- * @example
- * Book.objects.filter(Q({ title__exact: "Hello" }).or(Q({ author__exact: "John Doe" })))
+ * @example Book.objects.filter(Q({ title__exact: "Hello" }).or(Q({
+ *          author__exact: "John Doe" })))
  */
 function Q(queryObj) {
 	var values = [];
@@ -355,13 +506,15 @@ Q.not = function(op) {
 
 /**
  * Meta Model object.
- * @param modelDef {Object} The model definition, i.e. fields
+ * 
+ * @param modelDef
+ *            {Object} The model definition, i.e. fields
  */
 function Model(modelDef) {
 
 	if (!modelDef['Meta']) {
 		throw "Meta information missing";
-//		modelDef.Meta = {};
+// modelDef.Meta = {};
 	}
 	if (!modelDef.Meta.dbTable) {
 		throw "Meta table name missing";
@@ -451,7 +604,10 @@ Model._completeMetaInfo = function(modelDef) {
 
 /**
  * Save method that every model instance has.
- * @param onComplete {Function} callback when saving is finished. It is passed the saved model instance as parameter.
+ * 
+ * @param onComplete
+ *            {Function} callback when saving is finished. It is passed the
+ *            saved model instance as parameter.
  */
 Model._save = function(onComplete) {
 	var validationValue = this.validate();
@@ -459,7 +615,6 @@ Model._save = function(onComplete) {
 		throw validationValue;
 	}
 	
-	dump(this._manager.toSource());
 	this._manager.save(this, onComplete);
 }
 
@@ -474,8 +629,6 @@ Model._validate = function() {
 			var validationValue = fieldType.validate(value);
 			if (validationValue !== true) {
 				return validationValue;
-			} else {
-				this[name] = fieldType.toJs(value);
 			}
 		}
 	}
@@ -499,34 +652,70 @@ Model._getScheme = function() {
 	return scheme;
 }
 
+/**
+ * Field of a model.
+ * 
+ * @param params
+ *            {Object} primaryKey: Boolean - This field is the primary key.
+ *            unique: Boolean - This field is unique. null: Boolean - This field
+ *            can be null choices: Array of [dbValue, displayValue] - This field
+ *            can hold exclusively values from choices.
+ */
 function Field(params) {
 	this._params = params || {};
 	if (this._params['primaryKey']) {
 		this._params['unique'] = true;
 		this._params['null'] = false;
 	}
+	if (this._params['choices']) {
+		this._choicesVals = [];
+		var cs = this._params.choices;
+		for (var i = 0; i < cs.length; ++i) {
+			this._choicesVals.push(cs[i]);
+		}
+	}
 }
 
-Field.prototype.toJs = function(value) {
-	return value;
+/**
+ * Converts the value, that was fetched from a database query result, to its
+ * JavaScript equivalent. Callback is then called with the converted instance.
+ */
+Field.prototype.toJs = function(value, callback) {
+	callback(value);
 }
 
+/**
+ * Returns value as SQL formatted string
+ */
 Field.prototype.toSql = function(value) {
 	return "'" + value + "'";
 }
 
+/**
+ * If value is valid returns true else returns an error msg string
+ */
 Field.prototype.validate = function(value) {
 	if ((value === null || value === undefined) && !this._params.null) {
 		return "Value must not be " + value;
+	} else if (this._params['choices'] && this._choicesVals.indexOf(value) < 0) {
+		return "Value must be one of (" + this._choicesVals.toString() + ")";
 	}
 	return true;
 }
 
+/**
+ * Returns the params object of this field.
+ */
 Field.prototype.getParams = function() {
 	return this._params;
 }
 
-
+/**
+ * Model field that represents a string.
+ * 
+ * @param params
+ *            {Object} maxLength: maximal length of string. defaults to 255.
+ */
 function CharField(params) {
 	params = params || {};
 	params.maxLength = params.maxLength || 255;
@@ -538,13 +727,18 @@ CharField.prototype = new Field();
 
 CharField.prototype.validate = function(value) {
 	
-	if (value.length > this._params.maxLength) {
+	if (value && value.length > this._params.maxLength) {
 		return "Value exceeds max length of " + this._params.maxLength;
 	}
 	return Field.prototype.validate(value);
 }
 
-
+/**
+ * Model field that represents an integer.
+ * 
+ * @param params
+ *            See Field
+ */
 function IntegerField(params) {
 	Field.call(this, params);
 }
@@ -553,7 +747,7 @@ IntegerField.prototype = new Field();
 
 IntegerField.prototype.validate = function(value) {
 	value = parseInt(value);
-	if (isNaN(value)) {
+	if (value && isNaN(value)) {
 		return "Value is not a valid integer";
 	}
 	if (this._params['primaryKey'] && !value) {
@@ -564,4 +758,48 @@ IntegerField.prototype.validate = function(value) {
 
 IntegerField.prototype.toSql = function(value) {
 	return value.toString();
+}
+
+IntegerField.prototype.toJs = function(value, callback) {
+	callback(parseInt(value));
+}
+
+/**
+ * Model field that represents a reference to another model.
+ * 
+ * @param model
+ *            Model to be referenced
+ * @param params
+ *            See Field
+ */
+function ForeignKey(model, params) {
+	Field.call(this, params);
+	
+	this._refModel = model;
+}
+
+ForeignKey.prototype = new Field();
+
+ForeignKey.prototype.toSql = function(value) {
+	var refPrimKey = value._model.Meta.primaryKey;
+	return value._model[refPrimKey].toSql(value[refPrimKey]);
+}
+
+ForeignKey.prototype.toJs = function(value, callback) {
+	var manager = new ModelManager(this._refModel.objects._model);
+//	dump(this._refModel.toSource());
+	manager.get({ pk: value }, callback);
+}
+
+ForeignKey.prototype.validate = function(value) {
+	if (value) {
+		if (!value['_old_id']) {
+			return "Value is not a valid model instance";
+		}
+		if (!(value instanceof this._refModel)) {
+			return "Value is not an instance of the referenced model";
+		}
+	}
+	
+	return Field.prototype.validate(value);
 }

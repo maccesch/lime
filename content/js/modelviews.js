@@ -59,7 +59,6 @@ function createDefaultEditDescr(model) {
 				var options = editEl.firstChild.childNodes;
 				for (var i = 0; i < options.length; ++i) {
 					if (options[i].label == value.toString()) {
-						dump("hier");
 						editEl.selectedIndex = i;
 						break;
 					}
@@ -139,13 +138,12 @@ var InputFactory = {
 			return this.createMenuList(field, attrs);
 		}
 		
-		if (field instanceof CharField) {
-			return this.createTextInput(field, attrs);
-		} else if (field instanceof IntegerField) {
+		if (field instanceof IntegerField) {
 			return this.createTextInput(field, Object.merge(attrs, {
 				type : 'number'
 			}));
 		}
+		return this.createTextInput(field, attrs);
 	},
 
 	createTextInput : function(field, params) {
