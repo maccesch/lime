@@ -7,6 +7,6 @@ var Language = new Model({
 	shortcut: new CharField({ maxLength: 5, primaryKey: true }),
 	
 	toString: function() {
-		return this.name
+		return this.name;
 	}
 });
