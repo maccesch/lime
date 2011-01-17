@@ -23,8 +23,8 @@ ModelManager.prototype.save = function(modelInstance, onComplete) {
 	var values = [];
 	var cols = []
 	for (name in modelInstance._model) {
-		if (name != "Meta") {
-			var fieldType = modelInstance._model[name];
+		var fieldType = modelInstance._model[name];
+		if (fieldType instanceof Field) {
 			var value = modelInstance[name];
 			values.push(fieldType.toSql(value));
 			cols.push(name);
@@ -155,10 +155,11 @@ QuerySet.prototype._extractModelInstances = function(rows, modelDef, callback) {
 		var values = {}
 		
 		for (name in modelDef) {
-			if (name != "Meta") {
+			var type = modelDef[name];
+			
+			if (type instanceof Field) {
 				instance.__i += 1;
 				
-				var type = modelDef[name];
 				var dbCol = name;
 				if (type instanceof ForeignKey) {
 					dbCol = name + '_id';
@@ -168,8 +169,8 @@ QuerySet.prototype._extractModelInstances = function(rows, modelDef, callback) {
 		}
 		
 		for (name in modelDef) {
-			if (name != "Meta") {
-				var type = modelDef[name];
+			var type = modelDef[name];
+			if (type instanceof Field) {
 				type.toJs(item[values[name]], getCallback(instance, values, name));
 			}
 		}
@@ -227,12 +228,12 @@ QuerySet.prototype._buildJoins = function() {
  */
 QuerySet.prototype.get = function(queryObj, onComplete) {
 	this.filter(queryObj).all(function(results) {
-		if (result.length == 0) {
+		if (results.length == 0) {
 			throw "No Object found"
-		} else if (result.length > 1) {
+		} else if (results.length > 1) {
 			throw "More than one Object found"
 		} else {
-			onComplete(result[0]);
+			onComplete(results[0]);
 		}
 	});
 }
@@ -273,9 +274,7 @@ QuerySet.prototype.filter = function(queryObj) {
 	} else {
 		whereStr = this.convertLookups(queryObj, values);
 	}
-	dump(whereStr);
 	whereStr = this._bindParameters(whereStr, values);
-	dump("zurück");
 	
 	var newQs = this.clone();
 	if (newQs._where.length > 0) {
@@ -392,10 +391,9 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 	
 	var i = 0;
 	var index = whereStr.indexOf('${');
-	var colIndex = where.indexOf('§{');
 	while (index >= 0) {
 		var orig = whereStr.substr(index + 2).split('}', 1)[0];
-		var len = col.length;
+		var len = orig.length;
 		var model = this._model;
 		var col = orig;
 
@@ -446,7 +444,6 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 		whereStr = whereStr.replace("§{" + orig + "}", model.Meta.dbTable + "." + col);
 		
 		index = whereStr.indexOf('${', index + 1);
-		colIndex = whereStr.indexOf('${', colIndex + 1);
 	}
 	
 	// remove additional quotes of LIKE clauses
@@ -545,20 +542,28 @@ Model._initInstance = function(modelDef, modelManager, values) {
 	
 	// init fields
 	for (name in modelDef) {
+		
 		if (name != "Meta") {
-			this[name] = null;
 			
-			// create get<Name>Display() method for fields with choices.
-			if (modelDef[name].getParams()['choices']) {
-				var choices = modelDef[name].getParams()['choices'];
-				var choicesObj = {};
-				for (var i = 0; i < choices.length; ++i) {
-					choicesObj[choices[i][0]] = choices[i][1];
+			var type = modelDef[name];
+			if (type instanceof Field) {
+				this[name] = null;
+			
+				// create get<Name>Display() method for fields with choices.
+				if (modelDef[name].getParams()['choices']) {
+					var choices = modelDef[name].getParams()['choices'];
+					var choicesObj = {};
+					for (var i = 0; i < choices.length; ++i) {
+						choicesObj[choices[i][0]] = choices[i][1];
+					}
+					this['_' + name + 'Choices'] = choicesObj;
+					this['get' + name[0].toUpperCase() + name.substr(1) + 'Display'] = function() {
+						return this['_' + name + 'Choices'][this[name]];
+					}
 				}
-				this['_' + name + 'Choices'] = choicesObj;
-				this['get' + name[0].toUpperCase() + name.substr(1) + 'Display'] = function() {
-					return this['_' + name + 'Choices'][this[name]];
-				}
+			} else {
+				// copy methods from def
+				this[name] = type;
 			}
 		}
 	}
@@ -585,11 +590,10 @@ Model._initInstance = function(modelDef, modelManager, values) {
 Model._completeMetaInfo = function(modelDef) {
 	// search for primary key
 	for (name in modelDef) {
-		if (name != "Meta") {
-			if (modelDef[name]._params['primaryKey']) {
-				modelDef.Meta.primaryKey = name;
-				break;
-			}
+		var type = modelDef[name];
+		if (type instanceof Field && type._params['primaryKey']) {
+			modelDef.Meta.primaryKey = name;
+			break;
 		}
 	}
 	if (!modelDef.Meta['primaryKey']) {
@@ -623,8 +627,8 @@ Model._save = function(onComplete) {
  */
 Model._validate = function() {
 	for (name in this._model) {
-		if (name != "Meta") {
-			var fieldType = this._model[name];
+		var fieldType = this._model[name];
+		if (fieldType instanceof Field) {
 			var value = this[name];
 			var validationValue = fieldType.validate(value);
 			if (validationValue !== true) {
@@ -644,8 +648,9 @@ Model._getScheme = function() {
 	var scheme = {};
 
 	for (name in this.objects._model) {
-		if (name != "Meta") {
-			scheme[name] = this.objects._model[name];
+		var type = this.objects._model[name];
+		if (type instanceof Field) {
+			scheme[name] = type;
 		}
 	}
 	
@@ -787,7 +792,6 @@ ForeignKey.prototype.toSql = function(value) {
 
 ForeignKey.prototype.toJs = function(value, callback) {
 	var manager = new ModelManager(this._refModel.objects._model);
-//	dump(this._refModel.toSource());
 	manager.get({ pk: value }, callback);
 }
 

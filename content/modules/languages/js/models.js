@@ -4,5 +4,9 @@ var Language = new Model({
 	},
 	
 	name: new CharField({ maxLength: 50 }),
-	shortcut: new CharField({ maxLength: 5, primaryKey: true })
+	shortcut: new CharField({ maxLength: 5, primaryKey: true }),
+	
+	toString: function() {
+		return this.name
+	}
 });
