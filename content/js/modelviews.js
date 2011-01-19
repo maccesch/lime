@@ -16,8 +16,15 @@ function createDefaultListViewDescr(model) {
 	}
 	columns.each(function(col) {
 		var key = col;
-		viewDescr.cells[key] = function(modelEl) {
-			return modelEl[key];
+		var keyUp = key[0].toUpperCase() + key.substr(1);
+		viewDescr.cells[key] = function(modelEl, callback) {
+			if (modelEl['get' + keyUp + 'Display']) {
+				callback(modelEl['get' + keyUp + 'Display']());
+			} else if (modelEl[key] instanceof SingleManager) {
+				modelEl[key].get(callback);
+			} else {
+				callback(modelEl[key]);
+			}
 		}
 	});
 	return viewDescr;
@@ -42,30 +49,33 @@ function createDefaultEditDescr(model) {
 	function createMethods(key) {
 		var keyUp = key[0].toUpperCase() + key.substr(1);
 
-		editDescr.get[key] = function(modelEl) {
+		editDescr.get[key] = function(modelEl, callback) {
 			if (modelEl['get' + keyUp + 'Display']) {
-				return modelEl['get' + keyUp + 'Display']();
+				callback(modelEl['get' + keyUp + 'Display']());
+			} else if (modelEl[key] instanceof SingleManager) {
+				return modelEl[key].get(callback);
 			} else {
-				return modelEl[key];
+				callback(modelEl[key]);
 			}
 		}
 
 		editDescr.show[key] = function(modelEl) {
-			var value = editDescr.get[key](modelEl);
-			editDescr._viewValueEl[key].setAttribute('value', value);
-//			editDescr._editValueEl[key].setAttribute('value', value);
-			var editEl = editDescr._editValueEl[key];
-			if (editEl.nodeName == 'menulist') {
-				var options = editEl.firstChild.childNodes;
-				for (var i = 0; i < options.length; ++i) {
-					if (options[i].label == value.toString()) {
-						editEl.selectedIndex = i;
-						break;
+			editDescr.get[key](modelEl, function(value) {
+				editDescr._viewValueEl[key].setAttribute('value', value);
+//				editDescr._editValueEl[key].setAttribute('value', value);
+				var editEl = editDescr._editValueEl[key];
+				if (editEl.nodeName == 'menulist') {
+					var options = editEl.firstChild.childNodes;
+					for (var i = 0; i < options.length; ++i) {
+						if (options[i].label == value.toString()) {
+							editEl.selectedIndex = i;
+							break;
+						}
 					}
+				} else {
+					editEl.value = value;
 				}
-			} else {
-				editEl.value = value;
-			}
+			});
 		}
 
 		editDescr.save[key] = function(modelEl) {
@@ -277,9 +287,11 @@ var ListView = new Class({
 		$(item).adopt(row);
 		this.treecols.each(function(col, index) {
 			var key = col.getAttribute('key');
-			$(row).adopt(newXulEl('treecell', {
-				'label' : this.listViewDescr.cells[key](object)
-			}));
+			this.listViewDescr.cells[key](object, function(value) {
+				$(row).adopt(newXulEl('treecell', {
+					'label' : value
+				}));
+			});
 		}.bind(this));
 	},
 
@@ -296,8 +308,9 @@ var ListView = new Class({
 
 		this.treecols.each(function(col, index) {
 			var key = col.getAttribute('key');
-			cells[index].setAttribute('label', this.listViewDescr.cells[key]
-					(object));
+			this.listViewDescr.cells[key](object, function(value) {
+				cells[index].setAttribute('label', value);
+			});
 		}.bind(this));
 	},
 

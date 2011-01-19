@@ -72,6 +72,9 @@ ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, co
 			tx.executeSql(query, [], function(tx, result) {
 				modelInstance._new = false;
 				modelInstance._old_id = modelInstance[primKey];
+				
+				Model.replacePlaceholders(modelInstance);
+				
 				onComplete(modelInstance);
 			});
 		});
@@ -93,6 +96,65 @@ ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, co
 	});
 }
 
+
+/**
+ * Proxy for a single model instance, that should be loaded lazily.
+ * Used for ForeignKeys.
+ */
+function SingleManager(modelDef, id) {
+	ModelManager.call(this, modelDef);
+	this._id = id;
+}
+
+SingleManager.prototype = new ModelManager();
+
+/**
+ * Fetches the instance from the database and calls callback with it as argument.
+ */
+SingleManager.prototype.get = function(callback) {
+	if (this._cache) {
+		callback(this._cache);
+	} else {
+		var self = this;
+		QuerySet.prototype.get.call(this, { pk: this._id }, function(instance) {
+			self._cache = instance;
+			callback(instance);
+		});
+	}
+}
+
+/**
+ * Class that represents all instances of modelDef whose field named foreignKey has the value id.
+ * Used for the reverse relation of ForeignKey.
+ */
+function RelatedManager(modelDef, relModelDef, foreignKey, id) {
+	ModelManager.call(this, modelDef);
+	this._where = "'" + modelDef.Meta.dbTable + "'.'" + modelDef[foreignKey]._params.dbColumn + "'=" + relModelDef[relModelDef.Meta.primaryKey].toSql(id);
+//	this._additionalTables.push(relModelDef.Meta.dbTable);
+}
+
+RelatedManager.prototype = new ModelManager();
+
+/**
+ * A placeholder for RelatedManager. This is replaces by an actual manager
+ * when an instance of the model is created.
+ * @returns {RelatedManagerPlaceholder}
+ */
+function RelatedManagerPlaceholder(modelDef, foreignKey) {
+	this._modelDef = modelDef;
+	this._foreignKey = foreignKey;
+}
+
+/**
+ * Returns the RelatedManager that should replace this placeholder.
+ * @param modelDef Model definition of the model this placeholder is in.
+ * @param id Value of the primary key that the concerned instances reference to.
+ */
+RelatedManagerPlaceholder.prototype.getManager = function(relModelDef, id) {
+	return new RelatedManager(this._modelDef, relModelDef, this._foreignKey, id);
+}
+
+
 /**
  * Class that represents a list of model instances that are retrieved by a
  * database query.
@@ -104,13 +166,13 @@ function QuerySet(modelDef, manager) {
 	this._where = "";
 	this._extra = "";
 	this._joins = [];
+	this._additionalTables = [];
 	
-	// TODO : implement caching
 	this._cache = null;
 }
 
 /**
- * Creates a deep copy of this object.
+ * Creates a deep copy of this object (except cache).
  */
 QuerySet.prototype.clone = function() {
 	var newQs = new QuerySet(this._model, this._manager);
@@ -118,6 +180,7 @@ QuerySet.prototype.clone = function() {
 	newQs._where = this._where.substr(0);
 	newQs._extra = this._extra.substr(0);
 	newQs._joins = this._joins.slice(0);
+	newQs._additionalTables = this._additionalTables.slice(0);
 	
 	return newQs;
 }
@@ -201,18 +264,25 @@ QuerySet.prototype._buildExtra = function() {
 }
 
 /**
- * Builds the tabe joins for the sql query
+ * Builds the from clause, that is the table joins and additional table list for the sql query
  */
-QuerySet.prototype._buildJoins = function() {
+QuerySet.prototype._buildFrom = function() {
 	var table = this._model.Meta.dbTable;
-	var from = table;
+	var model = this._model;
+	var from = " FROM '" + table + "'";
 	
 	for (var i = 0; i < this._joins.length; ++i) {
 		var join = this._joins[i];
 		var otherTable = join.model.Meta.dbTable;
-		from += " JOIN " + otherTable;
-		from += " ON (" + table + "." + join.columns + "_id=" + otherTable + "." + join.model.Meta.primaryKey + ")";
+		from += " JOIN '" + otherTable;
+		from += "' ON ('" + table + "'.'" + model[join.column]._params.dbColumn + "'='" + otherTable + "'.'" + join.model.Meta.primaryKey + "')";
+		
 		table = otherTable;
+		model = join.model;
+	}
+	
+	if (this._additionalTables.length) {
+		from += ",'" + this._additionalTables.join("','") + "'";
 	}
 	
 	return from;
@@ -246,15 +316,22 @@ QuerySet.prototype.get = function(queryObj, onComplete) {
  *            Callback that is called with a list of all instances.
  */
 QuerySet.prototype.all = function(onComplete) {
-	var self = this;
-	db.transaction(function (tx) {
-		var where = self._buildWhere();
-		var joins = self._buildJoins();
-		var extra = self._buildExtra();
-		tx.executeSql("SELECT " + self._model.Meta.dbTable + ".* FROM " + joins + where + extra, [], function(tx, result) {
-			self._extractModelInstances(result.rows, self._model, onComplete);
+	if (this._cache) {
+		onComplete(this._cache.slice(0));
+	} else {
+		var self = this;
+		db.transaction(function (tx) {
+			var where = self._buildWhere();
+			var from = self._buildFrom();
+			var extra = self._buildExtra();
+			tx.executeSql("SELECT '" + self._model.Meta.dbTable + "'.*" + from + where + extra, [], function(tx, result) {
+				self._extractModelInstances(result.rows, self._model, function(instances) {
+					self._cache = instances.slice(0);
+					onComplete(instances);
+				});
+			});
 		});
-	});
+	}
 }
 
 
@@ -308,9 +385,9 @@ QuerySet.prototype.orderBy = function() {
 	for (var i = 0; i < arguments.length; ++i) {
 		var a = arguments[i];
 		if (a[0] == "-") {
-			orderList.push(this._model.Meta.dbTable + "." + a.substr(1) + " DESC");
+			orderList.push(this._model.Meta.dbTable + "." + this._model[a.substr(1)]._params.dbColumn + " DESC");
 		} else {
-			orderList.push(this._model.Meta.dbTable + "." + a + " ASC");
+			orderList.push(this._model.Meta.dbTable + "." + this._model[a]._params.dbColumn + " ASC");
 		}
 	}
 	
@@ -441,7 +518,7 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 		
 //		whereStr = whereStr.substring(0, index) + val + whereStr.substr(index + len + 3);
 		whereStr = whereStr.replace("${" + orig + "}", val);
-		whereStr = whereStr.replace("§{" + orig + "}", model.Meta.dbTable + "." + col);
+		whereStr = whereStr.replace("§{" + orig + "}", "'" + model.Meta.dbTable + "'.'" + model[col]._params.dbColumn + "'");
 		
 		index = whereStr.indexOf('${', index + 1);
 	}
@@ -502,8 +579,164 @@ Q.not = function(op) {
 
 
 /**
- * Meta Model object.
+ * Field of a model.
  * 
+ * @param params
+ *            {Object} primaryKey: Boolean - This field is the primary key.
+ *            unique: Boolean - This field is unique. null: Boolean - This field
+ *            can be null choices: Array of [dbValue, displayValue] - This field
+ *            can hold exclusively values from choices.
+ * @returns {Field}
+ */
+function Field(params) {
+	this._params = params || {};
+	if (this._params['primaryKey']) {
+		this._params['unique'] = true;
+		this._params['null'] = false;
+	}
+	if (this._params['choices']) {
+		this._choicesVals = [];
+		var cs = this._params.choices;
+		for (var i = 0; i < cs.length; ++i) {
+			this._choicesVals.push(cs[i]);
+		}
+	}
+}
+
+/**
+ * Converts the value, that was fetched from a database query result, to its
+ * JavaScript equivalent. Callback is then called with the converted instance.
+ */
+Field.prototype.toJs = function(value, callback) {
+	callback(value);
+}
+
+/**
+ * Returns value as SQL formatted string
+ */
+Field.prototype.toSql = function(value) {
+	return "'" + value + "'";
+}
+
+/**
+ * Returns the params object of this field.
+ */
+Field.prototype.getParams = function() {
+	return this._params;
+}
+
+/**
+ * If value is valid returns true else returns an error msg string
+ */
+Field.prototype.validate = function(value) {
+	if ((value === null || value === undefined) && (!this._params.null)) {
+		return "Value must not be " + value;
+	} else if (this._params['choices'] && this._choicesVals.indexOf(value) < 0) {
+		return "Value must be one of (" + this._choicesVals.toString() + ")";
+	}
+	return true;
+}
+
+/**
+ * Model field that represents a string.
+ * 
+ * @param params
+ *            {Object} maxLength: maximal length of string. defaults to 255.
+ * @returns  {CharField}
+ */
+function CharField(params) {
+	params = params || {};
+	params.maxLength = params.maxLength || 255;
+	Field.call(this, params);
+}
+
+CharField.prototype = new Field();
+
+CharField.prototype.validate = function(value) {
+	
+	if (value && value.length > this._params.maxLength) {
+		return "Value exceeds max length of " + this._params.maxLength;
+	}
+	return Field.prototype.validate(value);
+}
+
+/**
+ * Model field that represents an integer.
+ * 
+ * @param params
+ *            See Field
+ * @returns {IntegerField}
+ */
+function IntegerField(params) {
+	Field.call(this, params);
+}
+
+IntegerField.prototype = new Field();
+
+IntegerField.prototype.validate = function(value) {
+	value = parseInt(value);
+	if (value && isNaN(value)) {
+		return "Value is not a valid integer";
+	}
+	if (this._params['primaryKey'] && !value) {
+		return true;
+	}
+	return Field.prototype.validate(value);
+}
+
+IntegerField.prototype.toSql = function(value) {
+	return value.toString();
+}
+
+IntegerField.prototype.toJs = function(value, callback) {
+	callback(parseInt(value));
+}
+
+/**
+ * Model field that represents a reference to another model.
+ * 
+ * @param model
+ *            Model to be referenced
+ * @param params
+ *            See Field
+ * @returns {ForeignKey}
+ */
+function ForeignKey(model, params) {
+	Field.call(this, params);
+	
+	this._refModel = model;
+	
+}
+
+ForeignKey.prototype = new Field();
+
+ForeignKey.prototype.toSql = function(value) {
+	var refPrimKey = value._model.Meta.primaryKey;
+	return value._model[refPrimKey].toSql(value[refPrimKey]);
+}
+
+// TODO : change back toJs into a synchronous method?
+ForeignKey.prototype.toJs = function(value, callback) {
+//	var manager = new ModelManager(this._refModel.objects._model);
+//	manager.get({ pk: value }, callback);
+	callback(new SingleManager(this._refModel.objects._model, value));
+}
+
+ForeignKey.prototype.validate = function(value) {
+	if (value) {
+		if (!value['_old_id']) {
+			return "Value is not a valid model instance";
+		}
+		if (!(value instanceof this._refModel)) {
+			return "Value is not an instance of the referenced model";
+		}
+	}
+	
+	return Field.prototype.validate(value);
+}
+
+/**
+ * Meta Model object.
  * @param modelDef
  *            {Object} The model definition, i.e. fields
  */
@@ -511,12 +744,12 @@ function Model(modelDef) {
 
 	if (!modelDef['Meta']) {
 		throw "Meta information missing";
-// modelDef.Meta = {};
 	}
 	if (!modelDef.Meta.dbTable) {
 		throw "Meta table name missing";
 	}
 	Model._completeMetaInfo(modelDef);
+	Model._processFields(modelDef);
 	
 	var modelManager = new ModelManager(modelDef);
 	
@@ -540,6 +773,21 @@ Model._initInstance = function(modelDef, modelManager, values) {
 	this._model = modelDef;
 	this._manager = modelManager;
 	
+	function getDisplayFunc(name) {
+		return function() {
+			return this['_' + name + 'Choices'][this[name]];
+		}
+	}
+
+	// assign initial values
+	for (name in values) {
+		if (modelDef[name]) {
+			this[name] = values[name];
+		} else {
+			throw "Model has no field named '" + name + "'";
+		}
+	}
+	
 	// init fields
 	for (name in modelDef) {
 		
@@ -547,41 +795,74 @@ Model._initInstance = function(modelDef, modelManager, values) {
 			
 			var type = modelDef[name];
 			if (type instanceof Field) {
-				this[name] = null;
-			
+				// fill with default values
+				if (!this[name]) {
+					this[name] = type._params['default'];
+					if (this[name] instanceof Function) {
+						this[name] = this[name]();
+					}
+				}
 				// create get<Name>Display() method for fields with choices.
-				if (modelDef[name].getParams()['choices']) {
-					var choices = modelDef[name].getParams()['choices'];
+				var choices = modelDef[name].getParams()['choices'];
+				if (choices) {
 					var choicesObj = {};
 					for (var i = 0; i < choices.length; ++i) {
 						choicesObj[choices[i][0]] = choices[i][1];
 					}
 					this['_' + name + 'Choices'] = choicesObj;
-					this['get' + name[0].toUpperCase() + name.substr(1) + 'Display'] = function() {
-						return this['_' + name + 'Choices'][this[name]];
-					}
+					this['get' + name[0].toUpperCase() + name.substr(1) + 'Display'] = getDisplayFunc(name);
 				}
 			} else {
-				// copy methods from def
+				// copy everything that is not a Field from def
 				this[name] = type;
 			}
-		}
-	}
-	
-	// assign initial values
-	for (name in values) {
-		if (this[name] === null) {
-			this[name] = values[name];
-		} else {
-			throw "Model has no field named '" + name + "'";
 		}
 	}
 
 	this._old_id = this[modelDef.Meta.primaryKey];
 	
+	Model.replacePlaceholders(this);
+	
 	// create methods
 	this.save = Model._save;
 	this.validate = Model._validate;
+}
+
+/**
+ * Fills neccessary default params for the fields and adds inverse relations.
+ */
+Model._processFields = function(modelDef) {
+	for (name in modelDef) {
+		var type = modelDef[name];
+		if (type instanceof Field) {
+			
+			var defaultName = name;
+			if (type instanceof ForeignKey) {
+				defaultName += "_id";
+				
+				// add inverse relation to referenced model
+				var refModelDef = type._refModel.objects._model;
+				refModelDef[modelDef.Meta.dbTable + 'Set'] = new RelatedManagerPlaceholder(modelDef, name);
+			}
+			type._params['dbColumn'] = type._params['dbColumn'] || defaultName;
+		}
+	}
+}
+
+/**
+ * Replaces all placeholders by their proper managers
+ */
+Model.replacePlaceholders = function(instance) {
+	var id = instance[instance._model.Meta.primaryKey];
+	if (!id) {
+		return;
+	}
+	for (name in instance._model) {
+		var type = instance._model[name];
+		if (type instanceof RelatedManagerPlaceholder) {
+			instance[name] = type.getManager(instance._model, id);
+		}
+	}	
 }
 
 /**
@@ -655,155 +936,4 @@ Model._getScheme = function() {
 	}
 	
 	return scheme;
-}
-
-/**
- * Field of a model.
- * 
- * @param params
- *            {Object} primaryKey: Boolean - This field is the primary key.
- *            unique: Boolean - This field is unique. null: Boolean - This field
- *            can be null choices: Array of [dbValue, displayValue] - This field
- *            can hold exclusively values from choices.
- */
-function Field(params) {
-	this._params = params || {};
-	if (this._params['primaryKey']) {
-		this._params['unique'] = true;
-		this._params['null'] = false;
-	}
-	if (this._params['choices']) {
-		this._choicesVals = [];
-		var cs = this._params.choices;
-		for (var i = 0; i < cs.length; ++i) {
-			this._choicesVals.push(cs[i]);
-		}
-	}
-}
-
-/**
- * Converts the value, that was fetched from a database query result, to its
- * JavaScript equivalent. Callback is then called with the converted instance.
- */
-Field.prototype.toJs = function(value, callback) {
-	callback(value);
-}
-
-/**
- * Returns value as SQL formatted string
- */
-Field.prototype.toSql = function(value) {
-	return "'" + value + "'";
-}
-
-/**
- * If value is valid returns true else returns an error msg string
- */
-Field.prototype.validate = function(value) {
-	if ((value === null || value === undefined) && !this._params.null) {
-		return "Value must not be " + value;
-	} else if (this._params['choices'] && this._choicesVals.indexOf(value) < 0) {
-		return "Value must be one of (" + this._choicesVals.toString() + ")";
-	}
-	return true;
-}
-
-/**
- * Returns the params object of this field.
- */
-Field.prototype.getParams = function() {
-	return this._params;
-}
-
-/**
- * Model field that represents a string.
- * 
- * @param params
- *            {Object} maxLength: maximal length of string. defaults to 255.
- */
-function CharField(params) {
-	params = params || {};
-	params.maxLength = params.maxLength || 255;
-	Field.call(this, params);
-	
-}
-
-CharField.prototype = new Field();
-
-CharField.prototype.validate = function(value) {
-	
-	if (value && value.length > this._params.maxLength) {
-		return "Value exceeds max length of " + this._params.maxLength;
-	}
-	return Field.prototype.validate(value);
-}
-
-/**
- * Model field that represents an integer.
- * 
- * @param params
- *            See Field
- */
-function IntegerField(params) {
-	Field.call(this, params);
-}
-
-IntegerField.prototype = new Field();
-
-IntegerField.prototype.validate = function(value) {
-	value = parseInt(value);
-	if (value && isNaN(value)) {
-		return "Value is not a valid integer";
-	}
-	if (this._params['primaryKey'] && !value) {
-		return true;
-	}
-	return Field.prototype.validate(value);
-}
-
-IntegerField.prototype.toSql = function(value) {
-	return value.toString();
-}
-
-IntegerField.prototype.toJs = function(value, callback) {
-	callback(parseInt(value));
-}
-
-/**
- * Model field that represents a reference to another model.
- * 
- * @param model
- *            Model to be referenced
- * @param params
- *            See Field
- */
-function ForeignKey(model, params) {
-	Field.call(this, params);
-	
-	this._refModel = model;
-}
-
-ForeignKey.prototype = new Field();
-
-ForeignKey.prototype.toSql = function(value) {
-	var refPrimKey = value._model.Meta.primaryKey;
-	return value._model[refPrimKey].toSql(value[refPrimKey]);
-}
-
-ForeignKey.prototype.toJs = function(value, callback) {
-	var manager = new ModelManager(this._refModel.objects._model);
-	manager.get({ pk: value }, callback);
-}
-
-ForeignKey.prototype.validate = function(value) {
-	if (value) {
-		if (!value['_old_id']) {
-			return "Value is not a valid model instance";
-		}
-		if (!(value instanceof this._refModel)) {
-			return "Value is not an instance of the referenced model";
-		}
-	}
-	
-	return Field.prototype.validate(value);
 }

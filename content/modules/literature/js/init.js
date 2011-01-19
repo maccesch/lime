@@ -6,11 +6,19 @@
 	var ctrl = new ListDetailsController(listViewDescr, editDescr);
 
 	function fetchAllLanguages(tx) {
-		LiteratureType.objects.orderBy('type', 'title').all(function (objs) {	
+		Language.objects.get({ shortcut: 'X'}, function(obj) {
+//			dump(obj.literature_typesSet.toSource() + "\n\n");
+			obj.literature_typesSet.all(function (objs) {
+				ctrl.setModelObjects(objs);
+				
+				PageManager.getInstance().append('Literatur', 'Basisdaten', ctrl.getElement(), 'Suche in Literatur', onSearch);
+			});
+		});
+/*		LiteratureType.objects.orderBy('type', 'title').all(function (objs) {	
 			ctrl.setModelObjects(objs);
 			
 			PageManager.getInstance().append('Literatur', 'Basisdaten', ctrl.getElement(), 'Suche in Literatur', onSearch);
-		});
+		}); */
 	}
 	
 	db.transaction(fetchAllLanguages);
