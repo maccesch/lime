@@ -20,7 +20,7 @@ var LiteratureType;
 		shortcut: new CharField({ maxLength: 6 }),
 		orderId: new CharField({ maxLength: 10, primaryKey: true }),
 		type: new IntegerField({ choices: TYPE_CHOICES }),
-		language: new ForeignKey(Language)
+		language: new ForeignKey(Language, { relatedName: 'literatureTypes' })
 	});
 
 })();

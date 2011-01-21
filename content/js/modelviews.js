@@ -26,6 +26,7 @@ function createDefaultListViewDescr(model) {
 				callback(modelEl[key]);
 			}
 		}
+		viewDescr.cells[key].title = model.objects._model[key].getParams().verboseName;
 	});
 	return viewDescr;
 }
@@ -68,7 +69,7 @@ function createDefaultEditDescr(model) {
 					var options = editEl.firstChild.childNodes;
 					for (var i = 0; i < options.length; ++i) {
 						if (options[i].label == value.toString()) {
-							editEl.selectedIndex = i;
+							editEl.selectedItem = options[i];
 							break;
 						}
 					}
@@ -79,7 +80,13 @@ function createDefaultEditDescr(model) {
 		}
 
 		editDescr.save[key] = function(modelEl) {
-			var value = editDescr._editValueEl[key].value;
+			var editEl = editDescr._editValueEl[key];
+			var value;
+			if (editEl.nodeName == 'menulist') {
+				dump("selectedIndex: " + editEl.firstChild.childNodes.indexOf(editEl.selectedItem));
+			} else {
+				value = editEl.value;
+			}
 			modelEl[key] = (value);
 		}
 
@@ -96,7 +103,7 @@ function createDefaultEditDescr(model) {
 			viewEl.appendChild(box);
 
 			var attrs = {
-				'value' : keyUp,
+				'value' : model.objects._model[key].getParams().verboseName,
 				'class' : 'details-label'
 			};
 
@@ -145,13 +152,15 @@ var InputFactory = {
 		attrs = Object.merge(attrs, this.createAttrs(field));
 
 		if (field.getParams()['choices']) {
-			return this.createMenuList(field, attrs);
+			return this.createMenuList(field, attrs, field.getParams()['choices']);
 		}
 		
 		if (field instanceof IntegerField) {
 			return this.createTextInput(field, Object.merge(attrs, {
 				type : 'number'
 			}));
+		} else if (field instanceof ForeignKey) {
+			return this.createForeignKeyList(field, attrs);
 		}
 		return this.createTextInput(field, attrs);
 	},
@@ -161,7 +170,25 @@ var InputFactory = {
 		return input;
 	},
 	
-	createMenuList: function(field, params) {
+	createForeignKeyList: function(field, params) {
+		var ml = this.createMenuList(field, params, []);
+		field.ml = ml.firstChild;
+		var primKey = field.getModel().objects._model.Meta.primaryKey;
+		
+		field.getModel().objects.all(function(instances) {
+			instances.each(function (instance) {
+				var item = newXulEl('menuitem', {
+					label: instance.toString(),
+					value: instance[primKey]
+				});
+				field.ml.appendChild(item);
+			});
+			delete field.ml;
+		});
+		return ml;
+	},
+	
+	createMenuList: function(field, params, choices) {
 		var ml = newXulEl('menulist', params);
 		var mpop = newXulEl('menupopup');
 		ml.appendChild(mpop);
@@ -181,7 +208,7 @@ var InputFactory = {
 			mpop.appendChild(item);
 		}
 		
-		fieldParams.choices.each(function(choice, index) {
+		choices.each(function(choice, index) {
 			if (defaultVal === choice[0]) {
 				sel = index;
 			}
@@ -226,7 +253,7 @@ var ListView = new Class({
 		for (key in this.listViewDescr.cells) {
 			++i;
 			var col = newXulEl('treecol', {
-				'label' : key,
+				'label' : this.listViewDescr.cells[key].title,
 				'flex' : 1,
 				'persist' : 'width hidden',
 				'id' : ListView.instanceNo + '-list-view',

@@ -27,7 +27,7 @@ ModelManager.prototype.save = function(modelInstance, onComplete) {
 		if (fieldType instanceof Field) {
 			var value = modelInstance[name];
 			values.push(fieldType.toSql(value));
-			cols.push(name);
+			cols.push(fieldType._params.dbColumn);
 		}
 	}
 	
@@ -48,12 +48,12 @@ ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstanc
 	if (!modelInstance[primKey]) {
 		throw "Invalid value of Primary Key '" + primKey + "'";
 	}
-	var query = "UPDATE " + tableName + " SET ";
+	var query = "UPDATE '" + tableName + "' SET ";
 	var assigns = [];
 	for (var i = 0; i < cols.length; ++i) {
-		assigns.push(cols[i] + '=' + values[i]);
+		assigns.push("'" + cols[i] + "'=" + values[i]);
 	}
-	query += assigns.join(',') + " WHERE " + primKey + "=" + modelInstance._model[primKey].toSql(modelInstance._old_id);
+	query += assigns.join(',') + " WHERE '" + modelInstance._model[primKey]._params.dbColumn + "'=" + modelInstance._model[primKey].toSql(modelInstance._old_id);
 	db.transaction(function (tx) {
 		tx.executeSql(query, [], function(tx, result) {
 			modelInstance._old_id = modelInstance[primKey];
@@ -68,7 +68,7 @@ ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstanc
 ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, cols, values, onComplete) {
 	function insertNew() {
 		db.transaction(function (tx) {
-			var query = "INSERT INTO " + tableName + " (" + cols.join(",") + ") VALUES (" + values.join(",") + ")";
+			var query = "INSERT INTO '" + tableName + "' ('" + cols.join("','") + "') VALUES (" + values.join(",") + ")";
 			tx.executeSql(query, [], function(tx, result) {
 				modelInstance._new = false;
 				modelInstance._old_id = modelInstance[primKey];
@@ -191,6 +191,8 @@ QuerySet.prototype.clone = function() {
  */
 QuerySet.prototype._extractModelInstances = function(rows, modelDef, callback) {
 
+	var self = this;
+	
 	function getCallback(instance, values, name) {
 		
 		return function converted(value) {
@@ -199,7 +201,7 @@ QuerySet.prototype._extractModelInstances = function(rows, modelDef, callback) {
 			if (instance.__i == 0) {
 				delete instance.__i;
 
-				Model._initInstance.call(instance, modelDef, this._manager, values);
+				Model._initInstance.call(instance, modelDef, self._manager, values);
 
 				instances.push(instance);
 				if (instances.length == len) {
@@ -598,7 +600,7 @@ function Field(params) {
 		this._choicesVals = [];
 		var cs = this._params.choices;
 		for (var i = 0; i < cs.length; ++i) {
-			this._choicesVals.push(cs[i]);
+			this._choicesVals.push(cs[i][0]);
 		}
 	}
 }
@@ -657,7 +659,7 @@ CharField.prototype.validate = function(value) {
 	if (value && value.length > this._params.maxLength) {
 		return "Value exceeds max length of " + this._params.maxLength;
 	}
-	return Field.prototype.validate(value);
+	return Field.prototype.validate.call(this, value);
 }
 
 /**
@@ -681,7 +683,7 @@ IntegerField.prototype.validate = function(value) {
 	if (this._params['primaryKey'] && !value) {
 		return true;
 	}
-	return Field.prototype.validate(value);
+	return Field.prototype.validate.call(this, value);
 }
 
 IntegerField.prototype.toSql = function(value) {
@@ -711,8 +713,13 @@ function ForeignKey(model, params) {
 ForeignKey.prototype = new Field();
 
 ForeignKey.prototype.toSql = function(value) {
-	var refPrimKey = value._model.Meta.primaryKey;
-	return value._model[refPrimKey].toSql(value[refPrimKey]);
+	var sqlValue;
+	var model = this._refModel.objects._model;
+	var refPrimKey = model.Meta.primaryKey;
+	
+	sqlValue = value[refPrimKey];
+	
+	return model[refPrimKey].toSql(sqlValue);
 }
 
 // TODO : change back toJs into a synchronous method?
@@ -724,15 +731,22 @@ ForeignKey.prototype.toJs = function(value, callback) {
 
 ForeignKey.prototype.validate = function(value) {
 	if (value) {
+		if (!(value instanceof this._refModel)) {
+			return "Value is not a model";
+		}
 		if (!value['_old_id']) {
 			return "Value is not a valid model instance";
 		}
-		if (!(value instanceof this._refModel)) {
-			return "Value is not an instance of the referenced model";
-		}
 	}
 	
-	return Field.prototype.validate(value);
+	return Field.prototype.validate.call(this, value);
+}
+
+/**
+ * Returns the referenced model.
+ */
+ForeignKey.prototype.getModel = function() {
+	return this._refModel;
 }
 
 /**
@@ -838,13 +852,18 @@ Model._processFields = function(modelDef) {
 			
 			var defaultName = name;
 			if (type instanceof ForeignKey) {
+				var relName = type._params['relatedName'] = type._params['relatedName'] || (modelDef.Meta.dbTable + 'Set');
+				
 				defaultName += "_id";
 				
 				// add inverse relation to referenced model
-				var refModelDef = type._refModel.objects._model;
-				refModelDef[modelDef.Meta.dbTable + 'Set'] = new RelatedManagerPlaceholder(modelDef, name);
+				if (relName[relName.length-1] != '+') {
+					var refModelDef = type._refModel.objects._model;
+					refModelDef[relName] = new RelatedManagerPlaceholder(modelDef, name);
+				}
 			}
 			type._params['dbColumn'] = type._params['dbColumn'] || defaultName;
+			type._params['verboseName'] = type._params['verboseName'] || name[0].toUpperCase() + name.slice(1).replace(/([A-Z])/g, " $1");
 		}
 	}
 }

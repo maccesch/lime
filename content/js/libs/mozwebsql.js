@@ -90,7 +90,11 @@ WebDatabase.Transaction.prototype.executeSql = function(queryStr, parameters, re
 	}
 
 	dump(queryStr + "\n");
-	var statement = this.dbCon.createStatement(queryStr);
+	try {
+		var statement = this.dbCon.createStatement(queryStr);
+	} catch (e) {
+		throw this.dbCon.lastErrorString + ":\n" + queryStr + "\n";
+	}
 
 	var self = this;
 	var results = {

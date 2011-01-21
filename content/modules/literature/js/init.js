@@ -8,7 +8,7 @@
 	function fetchAllLanguages(tx) {
 		Language.objects.get({ shortcut: 'X'}, function(obj) {
 //			dump(obj.literature_typesSet.toSource() + "\n\n");
-			obj.literature_typesSet.all(function (objs) {
+			obj.literatureTypes.all(function (objs) {
 				ctrl.setModelObjects(objs);
 				
 				PageManager.getInstance().append('Literatur', 'Basisdaten', ctrl.getElement(), 'Suche in Literatur', onSearch);
