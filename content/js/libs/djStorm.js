@@ -48,12 +48,12 @@ ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstanc
 	if (!modelInstance[primKey]) {
 		throw "Invalid value of Primary Key '" + primKey + "'";
 	}
-	var query = "UPDATE '" + tableName + "' SET ";
+	var query = 'UPDATE "' + tableName + '" SET ';
 	var assigns = [];
 	for (var i = 0; i < cols.length; ++i) {
-		assigns.push("'" + cols[i] + "'=" + values[i]);
+		assigns.push('"' + cols[i] + '"=' + values[i]);
 	}
-	query += assigns.join(',') + " WHERE '" + modelInstance._model[primKey]._params.dbColumn + "'=" + modelInstance._model[primKey].toSql(modelInstance._old_id);
+	query += assigns.join(',') + ' WHERE "' + modelInstance._model[primKey]._params.dbColumn + '"=' + modelInstance._model[primKey].toSql(modelInstance._old_id);
 	db.transaction(function (tx) {
 		tx.executeSql(query, [], function(tx, result) {
 			modelInstance._old_id = modelInstance[primKey];
@@ -66,9 +66,10 @@ ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstanc
  * Saves a new (not in db yet) model instance to the db.
  */
 ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, cols, values, onComplete) {
+	var pkCol = modelInstance._model[primKey]._params.dbColumn;
 	function insertNew() {
 		db.transaction(function (tx) {
-			var query = "INSERT INTO '" + tableName + "' ('" + cols.join("','") + "') VALUES (" + values.join(",") + ")";
+			var query = 'INSERT INTO "' + tableName + '" ("' + cols.join('","') + '") VALUES (' + values.join(",") + ")";
 			tx.executeSql(query, [], function(tx, result) {
 				modelInstance._new = false;
 				modelInstance._old_id = modelInstance[primKey];
@@ -82,10 +83,9 @@ ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, co
 	
 	db.transaction(function (tx) {
 		if (!modelInstance[primKey]) {
-			tx.executeSql('SELECT MAX(' + primKey + ') + 1 AS nk FROM ' + tableName, [], function(tx, result) {
+			tx.executeSql('SELECT MAX("' + pkCol + '") + 1 AS nk FROM ' + tableName, [], function(tx, result) {
 				var nk = result.rows.item(0).nk;
-				alert(nk);
-				values[cols.indexOf(primKey)] = nk;
+				values[cols.indexOf(pkCol)] = nk;
 				modelInstance[primKey] = nk;
 
 				insertNew();
@@ -129,8 +129,7 @@ SingleManager.prototype.get = function(callback) {
  */
 function RelatedManager(modelDef, relModelDef, foreignKey, id) {
 	ModelManager.call(this, modelDef);
-	this._where = "'" + modelDef.Meta.dbTable + "'.'" + modelDef[foreignKey]._params.dbColumn + "'=" + relModelDef[relModelDef.Meta.primaryKey].toSql(id);
-//	this._additionalTables.push(relModelDef.Meta.dbTable);
+	this._where = '"' + modelDef.Meta.dbTable + '"."' + modelDef[foreignKey]._params.dbColumn + '"=' + relModelDef[relModelDef.Meta.primaryKey].toSql(id);
 }
 
 RelatedManager.prototype = new ModelManager();
@@ -271,20 +270,20 @@ QuerySet.prototype._buildExtra = function() {
 QuerySet.prototype._buildFrom = function() {
 	var table = this._model.Meta.dbTable;
 	var model = this._model;
-	var from = " FROM '" + table + "'";
+	var from = ' FROM "' + table + '"';
 	
 	for (var i = 0; i < this._joins.length; ++i) {
 		var join = this._joins[i];
 		var otherTable = join.model.Meta.dbTable;
-		from += " JOIN '" + otherTable;
-		from += "' ON ('" + table + "'.'" + model[join.column]._params.dbColumn + "'='" + otherTable + "'.'" + join.model.Meta.primaryKey + "')";
+		from += ' JOIN "' + otherTable;
+		from += '" ON ("' + table + '"."' + model[join.column]._params.dbColumn + '"="' + otherTable + '"."' + join.model.Meta.primaryKey + '")';
 		
 		table = otherTable;
 		model = join.model;
 	}
 	
 	if (this._additionalTables.length) {
-		from += ",'" + this._additionalTables.join("','") + "'";
+		from += ',"' + this._additionalTables.join('","') + '"';
 	}
 	
 	return from;
@@ -326,7 +325,7 @@ QuerySet.prototype.all = function(onComplete) {
 			var where = self._buildWhere();
 			var from = self._buildFrom();
 			var extra = self._buildExtra();
-			tx.executeSql("SELECT '" + self._model.Meta.dbTable + "'.*" + from + where + extra, [], function(tx, result) {
+			tx.executeSql('SELECT "' + self._model.Meta.dbTable + '".*' + from + where + extra, [], function(tx, result) {
 				self._extractModelInstances(result.rows, self._model, function(instances) {
 					self._cache = instances.slice(0);
 					onComplete(instances);
@@ -387,9 +386,9 @@ QuerySet.prototype.orderBy = function() {
 	for (var i = 0; i < arguments.length; ++i) {
 		var a = arguments[i];
 		if (a[0] == "-") {
-			orderList.push(this._model.Meta.dbTable + "." + this._model[a.substr(1)]._params.dbColumn + " DESC");
+			orderList.push('"' + this._model.Meta.dbTable + '"."' + this._model[a.substr(1)]._params.dbColumn + '" DESC');
 		} else {
-			orderList.push(this._model.Meta.dbTable + "." + this._model[a]._params.dbColumn + " ASC");
+			orderList.push('"' + this._model.Meta.dbTable + '"."' + this._model[a]._params.dbColumn + '" ASC');
 		}
 	}
 	
@@ -520,7 +519,7 @@ QuerySet.prototype._bindParameters = function(whereStr, values) {
 		
 //		whereStr = whereStr.substring(0, index) + val + whereStr.substr(index + len + 3);
 		whereStr = whereStr.replace("${" + orig + "}", val);
-		whereStr = whereStr.replace("§{" + orig + "}", "'" + model.Meta.dbTable + "'.'" + model[col]._params.dbColumn + "'");
+		whereStr = whereStr.replace("§{" + orig + "}", '"' + model.Meta.dbTable + '"."' + model[col]._params.dbColumn + '"');
 		
 		index = whereStr.indexOf('${', index + 1);
 	}
@@ -731,7 +730,7 @@ ForeignKey.prototype.toJs = function(value, callback) {
 
 ForeignKey.prototype.validate = function(value) {
 	if (value) {
-		if (!(value instanceof this._refModel)) {
+		if (value._model != this._refModel.objects._model) {
 			return "Value is not a model";
 		}
 		if (!value['_old_id']) {

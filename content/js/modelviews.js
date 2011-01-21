@@ -83,7 +83,8 @@ function createDefaultEditDescr(model) {
 			var editEl = editDescr._editValueEl[key];
 			var value;
 			if (editEl.nodeName == 'menulist') {
-				dump("selectedIndex: " + editEl.firstChild.childNodes.indexOf(editEl.selectedItem));
+				dump(editEl.selectedItem.object);
+				value = editEl.selectedItem.object;
 			} else {
 				value = editEl.value;
 			}
@@ -181,6 +182,7 @@ var InputFactory = {
 					label: instance.toString(),
 					value: instance[primKey]
 				});
+				item.object = instance;
 				field.ml.appendChild(item);
 			});
 			delete field.ml;
@@ -188,7 +190,7 @@ var InputFactory = {
 		return ml;
 	},
 	
-	createMenuList: function(field, params, choices) {
+	createMenuList: function(field, params, choices, objects) {
 		var ml = newXulEl('menulist', params);
 		var mpop = newXulEl('menupopup');
 		ml.appendChild(mpop);
@@ -216,6 +218,11 @@ var InputFactory = {
 				value: choice[0],
 				label: choice[1]
 			});
+			if (objects) {
+				item.object = objects[index];
+			} else {
+				item.object = choice[0];
+			}
 			mpop.appendChild(item);
 		});
 		ml.selectedIndex = sel;
