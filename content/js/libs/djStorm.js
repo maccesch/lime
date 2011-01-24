@@ -124,6 +124,15 @@ SingleManager.prototype.get = function(callback) {
 }
 
 /**
+ * Sets the instance
+ */
+SingleManager.prototype.set = function(instance) {
+	this._cache = instance;
+	this._id = instance[this._model.Meta.primaryKey];
+}
+
+
+/**
  * Class that represents all instances of modelDef whose field named foreignKey has the value id.
  * Used for the reverse relation of ForeignKey.
  */
@@ -700,6 +709,7 @@ IntegerField.prototype.toJs = function(value, callback) {
  *            Model to be referenced
  * @param params
  *            See Field
+ *            relatedName: name of the inverse relation field, that is added to the referenced model.
  * @returns {ForeignKey}
  */
 function ForeignKey(model, params) {
@@ -716,7 +726,7 @@ ForeignKey.prototype.toSql = function(value) {
 	var model = this._refModel.objects._model;
 	var refPrimKey = model.Meta.primaryKey;
 	
-	sqlValue = value[refPrimKey];
+	sqlValue = value._id;
 	
 	return model[refPrimKey].toSql(sqlValue);
 }
@@ -730,11 +740,8 @@ ForeignKey.prototype.toJs = function(value, callback) {
 
 ForeignKey.prototype.validate = function(value) {
 	if (value) {
-		if (value._model != this._refModel.objects._model) {
-			return "Value is not a model";
-		}
-		if (!value['_old_id']) {
-			return "Value is not a valid model instance";
+		if (!(value instanceof SingleManager)) {
+			return "Value is not a SingleManager. You probably assigned a value directly to the field instead of using the set() method.";
 		}
 	}
 	
@@ -747,6 +754,21 @@ ForeignKey.prototype.validate = function(value) {
 ForeignKey.prototype.getModel = function() {
 	return this._refModel;
 }
+
+/**
+ * Field that represents a many to many relationship.
+ * @param model The referenced model
+ * @param params See Field
+ * @returns {ManyToManyField}
+ */
+function ManyToManyField(model, params) {
+	Field.call(this, params);
+	
+	this._refModel = model;
+}
+
+ManyToManyField.prototype = new Field();
+
 
 /**
  * Meta Model object.

@@ -83,12 +83,15 @@ function createDefaultEditDescr(model) {
 			var editEl = editDescr._editValueEl[key];
 			var value;
 			if (editEl.nodeName == 'menulist') {
-				dump(editEl.selectedItem.object);
 				value = editEl.selectedItem.object;
 			} else {
 				value = editEl.value;
 			}
-			modelEl[key] = (value);
+			if (modelEl[key].set) {
+				modelEl[key].set(value);
+			} else {
+				modelEl[key] = (value);
+			}
 		}
 
 		editDescr.createInputXul[key] = function(fieldType) {
