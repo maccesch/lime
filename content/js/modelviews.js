@@ -62,8 +62,24 @@ function createDefaultEditDescr(model) {
 
 		editDescr.show[key] = function(modelEl) {
 			editDescr.get[key](modelEl, function(value) {
-				editDescr._viewValueEl[key].setAttribute('value', value);
-//				editDescr._editValueEl[key].setAttribute('value', value);
+				var viewEl = editDescr._viewValueEl[key];
+				if (viewEl.nodeName == 'listbox') {
+					// ManyToManyField
+					while (viewEl.firstChild) {
+						viewEl.removeChild(viewEl.firstChild);
+					}
+					value.all(function(instances) {
+						instances.each(function(instance, index) {
+							var item = newXulEl('listitem', {
+								'label': instance.toString()
+							});
+							viewEl.appendChild(item);
+						});
+					});
+				} else {
+					viewEl.setAttribute('value', value);
+				}
+				
 				var editEl = editDescr._editValueEl[key];
 				if (editEl.nodeName == 'menulist') {
 					var options = editEl.firstChild.childNodes;
@@ -94,13 +110,6 @@ function createDefaultEditDescr(model) {
 			}
 		}
 
-		editDescr.createInputXul[key] = function(fieldType) {
-			var input = InputFactory.createInput(fieldType, {
-				'class' : 'details-edit-value'
-			});
-			return input;
-		}
-		
 		editDescr.createXul[key] = function(viewEl, editEl) {
 			// view details
 			var box = newXulEl('box');
@@ -108,15 +117,17 @@ function createDefaultEditDescr(model) {
 
 			var attrs = {
 				'value' : model.objects._model[key].getParams().verboseName,
-				'class' : 'details-label'
+				'class' : 'details-label ' + key
 			};
 
 			var label = newXulEl('label', attrs);
 			box.appendChild(label);
 
-			editDescr._viewValueEl[key] = newXulEl('label', {
-				'class' : 'details-view-value'
-			});
+			var fieldType = model.objects._model[key];
+			editDescr._viewValueEl[key] = OutputFactory.createOutput(fieldType, {
+				'class' : 'details-view-value ' + key
+			}); 
+			
 			box.appendChild(editDescr._viewValueEl[key]);
 
 			// edit details
@@ -126,7 +137,9 @@ function createDefaultEditDescr(model) {
 			label = newXulEl('label', attrs);
 			box.appendChild(label);
 
-			editDescr._editValueEl[key] = editDescr.createInputXul[key](scheme[key]);
+			editDescr._editValueEl[key] = InputFactory.createInput(fieldType, {
+				'class' : 'details-edit-value'
+			});
 
 			box.appendChild(editDescr._editValueEl[key]);
 		}
@@ -137,6 +150,28 @@ function createDefaultEditDescr(model) {
 	}
 	return editDescr;
 }
+
+
+var OutputFactory = {
+	
+	createOutput: function(field, attrs) {
+		if (field instanceof ManyToManyField) {
+			return this.createList(field, attrs);
+		} else {
+			return this.createLabel(field, attrs);
+		}
+	},
+	
+	createLabel: function(field, attrs) {
+		return newXulEl('label', attrs);
+	},
+	
+	createList: function(field, attrs) {
+		var listbox = newXulEl('listbox', attrs);
+		return listbox;
+	}
+}
+
 
 var InputFactory = {
 
@@ -398,10 +433,12 @@ var DetailsView = new Class({
 	},
 
 	_generateViewXul : function() {
-		var vbox = newXulEl('vbox');
+		var vbox = newXulEl('vbox', {
+		});
 
 		var box = newXulEl('vbox', {
-			'flex' : 1
+			'flex' : 1,
+			'class': 'view'
 		});
 		vbox.appendChild(box);
 
@@ -430,10 +467,12 @@ var DetailsView = new Class({
 	},
 
 	_generateEditXul : function() {
-		var vbox = newXulEl('vbox');
+		var vbox = newXulEl('vbox', {
+		});
 
 		var box = newXulEl('vbox', {
-			'flex' : 1
+			'flex' : 1,
+			'class': 'edit'
 		});
 		vbox.appendChild(box);
 
@@ -515,7 +554,8 @@ var ListDetailsController = new Class({
 		});
 
 		this.listEl = newXulEl('vbox', {
-			'flex' : 1
+			'flex' : 4,
+			'class': 'list'
 		});
 		this.el.appendChild(this.listEl);
 
@@ -532,7 +572,8 @@ var ListDetailsController = new Class({
 
 		this.detailsEl = newXulEl('deck', {
 			'selectedIndex' : 0,
-			'flex' : 0
+			'flex' : 0,
+			'class': 'details'
 		});
 		this.el.appendChild(this.detailsEl);
 

@@ -1,4 +1,4 @@
-#ld-details-edit-box, #ld-details-view-box {
+.details .view, .details .edit {
 	padding: 10px 5px;
 /*	border-left: 1px solid #999999; */
 }

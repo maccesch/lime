@@ -22,12 +22,18 @@ ModelManager.prototype = new QuerySet();
 ModelManager.prototype.save = function(modelInstance, onComplete) {
 	var values = [];
 	var cols = []
+	var additionalQueries = "";
 	for (name in modelInstance._model) {
 		var fieldType = modelInstance._model[name];
 		if (fieldType instanceof Field) {
-			var value = modelInstance[name];
-			values.push(fieldType.toSql(value));
-			cols.push(fieldType._params.dbColumn);
+			if (fieldType instanceof ManyToManyField) {
+				var m2mField = modelInstance[name];
+				additionalQueries += this._updateManyToManyField(m2mField, modelInstance);
+			} else {
+				var value = modelInstance[name];
+				values.push(fieldType.toSql(value));
+				cols.push(fieldType._params.dbColumn);
+			}
 		}
 	}
 	
@@ -35,20 +41,20 @@ ModelManager.prototype.save = function(modelInstance, onComplete) {
 	var primKey = modelInstance._model.Meta.primaryKey;
 	
 	if (modelInstance._new) {
-		this._saveNew(tableName, primKey, modelInstance, cols, values, onComplete);
+		this._saveNew(tableName, primKey, modelInstance, cols, values, onComplete, additionalQueries);
 	} else {
-		this._saveExisting(tableName, primKey, modelInstance, cols, values, onComplete);
+		this._saveExisting(tableName, primKey, modelInstance, cols, values, onComplete, additionalQueries);
 	}
 }
 
 /**
  * Saves an existing (already in db) model instance to the db.
  */
-ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstance, cols, values, onComplete) {
+ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstance, cols, values, onComplete, additionalQueries) {
 	if (!modelInstance[primKey]) {
 		throw "Invalid value of Primary Key '" + primKey + "'";
 	}
-	var query = 'UPDATE "' + tableName + '" SET ';
+	var query = additionalQueries + 'UPDATE "' + tableName + '" SET ';
 	var assigns = [];
 	for (var i = 0; i < cols.length; ++i) {
 		assigns.push('"' + cols[i] + '"=' + values[i]);
@@ -65,11 +71,11 @@ ModelManager.prototype._saveExisting = function(tableName, primKey, modelInstanc
 /**
  * Saves a new (not in db yet) model instance to the db.
  */
-ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, cols, values, onComplete) {
+ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, cols, values, onComplete, additionalQueries) {
 	var pkCol = modelInstance._model[primKey]._params.dbColumn;
 	function insertNew() {
 		db.transaction(function (tx) {
-			var query = 'INSERT INTO "' + tableName + '" ("' + cols.join('","') + '") VALUES (' + values.join(",") + ")";
+			var query = additionalQueries + 'INSERT INTO "' + tableName + '" ("' + cols.join('","') + '") VALUES (' + values.join(",") + ")";
 			tx.executeSql(query, [], function(tx, result) {
 				modelInstance._new = false;
 				modelInstance._old_id = modelInstance[primKey];
@@ -94,6 +100,32 @@ ModelManager.prototype._saveNew = function(tableName, primKey, modelInstance, co
 			insertNew();
 		}
 	});
+}
+
+/**
+ * Saves the many to many field through its intermediate table
+ */
+ModelManager.prototype._udpateManyToManyField = function(manyToManyField, modelInstance) {
+	var primKey = this._model.Meta.primaryKey;
+	if (modelInstance._old_id == modelInstance[primKey]) {
+		return "";
+	}
+	
+	var interModel = manyToManyField._params.through.objects._model;
+	
+	// find reference to this model
+	var type;
+	var name;
+	for (name in interModel) {
+		type = interModel[name];
+		if (type instanceof ForeignKey && type._refModel.objects._model == this._model) {
+			break;
+		}
+	}
+	
+	return 'UPDATE "' + interModel.Meta.dbTable + '" SET "' + type._params.dbColumn + '" = ' +
+			type.toSql(modelInstance[primKey]) + ' WHERE "' + type._params.dbColumn + '" = ' +
+			type.toSql(modelInstance._old_id) + ";";
 }
 
 
@@ -135,10 +167,40 @@ SingleManager.prototype.set = function(instance) {
 /**
  * Class that represents all instances of modelDef whose field named foreignKey has the value id.
  * Used for the reverse relation of ForeignKey.
+ * If joinModelDef is provided then foreignKey is a columns of this table and this table is joined with the modelDef table.
+ * That is used for ManyToManyFields.
  */
-function RelatedManager(modelDef, relModelDef, foreignKey, id) {
+function RelatedManager(modelDef, relModelDef, foreignKey, id, joinModelDef) {
 	ModelManager.call(this, modelDef);
-	this._where = '"' + modelDef.Meta.dbTable + '"."' + modelDef[foreignKey]._params.dbColumn + '"=' + relModelDef[relModelDef.Meta.primaryKey].toSql(id);
+
+	var table;
+	var col;
+	if (joinModelDef) {
+		table = joinModelDef.Meta.dbTable;
+		col = joinModelDef[foreignKey]._params.dbColumn;
+	} else {
+		table = modelDef.Meta.dbTable;
+		col = modelDef[foreignKey]._params.dbColumn;
+	}
+	this._where = '"' + table + '"."' + col + '"=' + relModelDef[relModelDef.Meta.primaryKey].toSql(id);
+	
+	if (joinModelDef) {
+		// TODO : make this a join?
+		
+		// find foreign key for this model
+		var joinForeignKey;
+		for (name in joinModelDef) {
+			var type = joinModelDef[name]; 
+			if (type instanceof ForeignKey && type._refModel.objects._model == modelDef) {
+				joinForeignKey = name;
+				break;
+			}
+		}
+		
+		this._additionalTables.push(table);
+		this._where = '(' + this._where + ' AND "' + table + '"."' + joinModelDef[joinForeignKey]._params.dbColumn + '"="' + 
+				modelDef.Meta.dbTable + '"."' + modelDef[modelDef.Meta.primaryKey]._params.dbColumn + '")';
+	}
 }
 
 RelatedManager.prototype = new ModelManager();
@@ -148,9 +210,10 @@ RelatedManager.prototype = new ModelManager();
  * when an instance of the model is created.
  * @returns {RelatedManagerPlaceholder}
  */
-function RelatedManagerPlaceholder(modelDef, foreignKey) {
+function RelatedManagerPlaceholder(modelDef, foreignKey, joinModelDef) {
 	this._modelDef = modelDef;
 	this._foreignKey = foreignKey;
+	this._joinModelDef = joinModelDef;
 }
 
 /**
@@ -159,7 +222,7 @@ function RelatedManagerPlaceholder(modelDef, foreignKey) {
  * @param id Value of the primary key that the concerned instances reference to.
  */
 RelatedManagerPlaceholder.prototype.getManager = function(relModelDef, id) {
-	return new RelatedManager(this._modelDef, relModelDef, this._foreignKey, id);
+	return new RelatedManager(this._modelDef, relModelDef, this._foreignKey, id, this._joinModelDef);
 }
 
 
@@ -299,11 +362,27 @@ QuerySet.prototype._buildFrom = function() {
 }
 
 /**
+ * Deletes all objects this query set represents.
+ * @param onComplete {Function} Callback that is called when deletion is done. No arguments are passed.
+ */
+QuerySet.prototype.delete = function(onComplete) {
+	this._cache = [];
+	var self = this;
+	db.transaction(function (tx) {
+		var where = self._buildWhere();
+		var from = self._buildFrom();
+		tx.executeSql('DELETE' + from + where, [], function(tx, result) {
+			onComplete();
+		});
+	});
+}
+
+/**
  * Fetches the object that machtes the lookup parameters given by queryObj. The format of queryObj is the same as in filter().
  * If no or more than one result is found, an exception is thrown.
- * @param queryObj
+ * @param queryObj {Object}
  *            field lookups or Q object.
- * @param onComplete
+ * @param onComplete {Function}
  *            Callback that is called with the fetched instance.
  */
 QuerySet.prototype.get = function(queryObj, onComplete) {
@@ -322,7 +401,7 @@ QuerySet.prototype.get = function(queryObj, onComplete) {
  * Fetches all instances of the model which are in the db. This method actually
  * hits the database and evaluates the query set.
  * 
- * @param onComplete
+ * @param onComplete {Function}
  *            Callback that is called with a list of all instances.
  */
 QuerySet.prototype.all = function(onComplete) {
@@ -349,7 +428,7 @@ QuerySet.prototype.all = function(onComplete) {
  * Returns a QuerySet which represents all instances of the model which validate
  * against queryObj. This QuerySet remains unchanged.
  * 
- * @param queryObj
+ * @param queryObj {Object}
  *            field lookups or Q object.
  */
 QuerySet.prototype.filter = function(queryObj) {
@@ -375,7 +454,7 @@ QuerySet.prototype.filter = function(queryObj) {
  * Returns a QuerySet which represents all instances of the model which do NOT
  * validate against queryObj. This QuerySet remains unchanged.
  * 
- * @param queryObj
+ * @param queryObj {Object}
  *            field lookups or Q object.
  */
 QuerySet.prototype.exclude = function(queryObj) {
@@ -769,6 +848,42 @@ function ManyToManyField(model, params) {
 
 ManyToManyField.prototype = new Field();
 
+ManyToManyField.prototype.toSql = function(value) {
+}
+
+ManyToManyField.prototype.toJs = function(value, callback) {
+	var interModel = this._params.through.objects._model;
+	
+	// find field of interModel that references the model where this field is in.
+	var foreignKey;
+	for (name in interModel) {
+		var type = interModel[name];
+		if (type instanceof ForeignKey) {
+			if (type._refModel.objects._model == this._model) {
+				foreignKey = name;
+				break;
+			}
+		}
+	}
+	
+	callback(new RelatedManagerPlaceholder(this._refModel.objects._model, foreignKey, interModel));
+}
+
+ManyToManyField.prototype._createDefaultThrough = function(thisModel, fieldName) {
+	var modelFkName = this._model.Meta.dbTable;
+	var refModelFkName = this._refModel.objects._model.Meta.dbTable;
+	
+	var throughDef = {
+		Meta: {
+			dbTable: modelFkName + "_" + fieldName
+		}
+	};
+	throughDef[modelFkName] = new ForeignKey(thisModel, { relatedName: '+' });
+	throughDef[refModelFkName] = new ForeignKey(this._refModel, { relatedName: '+' });
+	
+	return new Model(throughDef);
+}
+
 
 /**
  * Meta Model object.
@@ -784,7 +899,7 @@ function Model(modelDef) {
 		throw "Meta table name missing";
 	}
 	Model._completeMetaInfo(modelDef);
-	Model._processFields(modelDef);
+	Model._preProcessFields(modelDef);
 	
 	var modelManager = new ModelManager(modelDef);
 	
@@ -797,6 +912,8 @@ function Model(modelDef) {
 	
 	newModel.objects = modelManager;
 	newModel.getScheme = Model._getScheme;
+	
+	Model._postProcessFields(newModel);
 	
 	return newModel;
 }
@@ -866,13 +983,16 @@ Model._initInstance = function(modelDef, modelManager, values) {
 /**
  * Fills neccessary default params for the fields and adds inverse relations.
  */
-Model._processFields = function(modelDef) {
+Model._preProcessFields = function(modelDef) {
 	for (name in modelDef) {
 		var type = modelDef[name];
 		if (type instanceof Field) {
 			
 			var defaultName = name;
-			if (type instanceof ForeignKey) {
+			
+			if (type instanceof ForeignKey || type instanceof ManyToManyField) {
+				type._model = modelDef;
+
 				var relName = type._params['relatedName'] = type._params['relatedName'] || (modelDef.Meta.dbTable + 'Set');
 				
 				defaultName += "_id";
@@ -883,11 +1003,28 @@ Model._processFields = function(modelDef) {
 					refModelDef[relName] = new RelatedManagerPlaceholder(modelDef, name);
 				}
 			}
+			
 			type._params['dbColumn'] = type._params['dbColumn'] || defaultName;
 			type._params['verboseName'] = type._params['verboseName'] || name[0].toUpperCase() + name.slice(1).replace(/([A-Z])/g, " $1");
 		}
 	}
 }
+
+/**
+ * Completes Field information after the model constructor is created.
+ */
+Model._postProcessFields = function(model) {
+	var modelDef = model.objects._model;
+	for (name in modelDef) {
+		var type = modelDef[name];
+		// Create default through model for ManyToManyFields
+		if (type instanceof ManyToManyField) {
+			type._params.through = type._params.through || type._createDefaultThrough(model, name);
+			type._refModel.objects._model[type._params.relatedName]._joinModelDef = type._params.through.objects._model;
+		}
+	}
+}
+
 
 /**
  * Replaces all placeholders by their proper managers
@@ -898,7 +1035,7 @@ Model.replacePlaceholders = function(instance) {
 		return;
 	}
 	for (name in instance._model) {
-		var type = instance._model[name];
+		var type = instance[name];
 		if (type instanceof RelatedManagerPlaceholder) {
 			instance[name] = type.getManager(instance._model, id);
 		}
@@ -919,7 +1056,7 @@ Model._completeMetaInfo = function(modelDef) {
 	}
 	if (!modelDef.Meta['primaryKey']) {
 		modelDef.Meta.primaryKey = 'id';
-		if (!modelDef[id]) {
+		if (!modelDef.id) {
 			modelDef.id = new IntegerField({
 				primaryKey: true,
 			});

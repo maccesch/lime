@@ -4,8 +4,8 @@ var LiteratureType;
 (function() {
 	
 	var TYPE_CHOICES = [
-        [1, "Book"],
-        [2, "Brochure"],
+        [1, "Buch"],
+        [2, "Broschüre"],
         [3, "CD"],
         [4, "DVD"],
         [5, "VHS"]
@@ -16,11 +16,11 @@ var LiteratureType;
 			dbTable: "literature_types"
 		},
 		
-		title: new CharField(),
-		shortcut: new CharField({ maxLength: 6 }),
-		orderId: new CharField({ maxLength: 10, primaryKey: true }),
-		type: new IntegerField({ choices: TYPE_CHOICES }),
-		language: new ForeignKey(Language, { relatedName: 'literatureTypes' })
+		title: new CharField({ verboseName: 'Titel' }),
+		shortcut: new CharField({ maxLength: 6, verboseName: 'Abkürzung' }),
+		orderId: new CharField({ maxLength: 10, primaryKey: true, verboseName: 'Bestellnr' }),
+		type: new IntegerField({ choices: TYPE_CHOICES, verboseName: 'Typ' }),
+		languages: new ManyToManyField(Language, { relatedName: 'literatureTypes', verboseName: 'Sprachen' })
 	});
 
 })();
