@@ -7,3 +7,7 @@ splitter {
 	min-width: 0;
 	width: 5px;
 }
+
+multiselectbox {
+	-moz-binding: url('chrome://lime/content/bindings.xml#multiselectbox');
+}

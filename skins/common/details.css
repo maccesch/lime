@@ -2,3 +2,7 @@
 	padding: 10px 5px;
 /*	border-left: 1px solid #999999; */
 }
+
+.details-label {
+	width: 100px;
+}

@@ -534,7 +534,7 @@ QuerySet.prototype._buildCondition = function(col, op) {
 	if (op == 'exact') {
 		return colPlaceholder + " = " + valPlaceholder + " COLLATE BINARY";
 	} else if (op == 'iexact') {
-		return colPlaceholder + " = " + valPlaceholder + " colPlaceholderLATE NOCASE";
+		return colPlaceholder + " = " + valPlaceholder + " COLLATE NOCASE";
 	} else if (op == 'contains') {
 		return colPlaceholder + " LIKE '%" + valPlaceholder + "%'";
 	} else if (op == 'icontains') {

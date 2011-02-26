@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<bindings xmlns="http://www.mozilla.org/xbl">
+	<binding id="multiselectbox">
+		<content>
+			<xul:label xbl:inherits="value=availableTitle"/>
+			<xul:listbox class="available" xbl:inherits="rows">
+				<children includes="listitem[not(@selected)]"/>
+			</xul:listbox>
+			<xul:button label=">" class="add"/>
+			<xul:button label="<" class="remove"/>
+			<xul:label xbl:inherits="value=selectedTitle"/>
+			<xul:listbox class="selected" xbl:inherits="rows">
+				<children includes="listitem[@selected]"/>
+			</xul:listbox>
+		</content>
+		
+		<implementation>
+			<property name="selectedItems">
+				<getter>
+					var children = document.getAnonymousNodes(this);
+					return children[children.length-1].childNodes;
+				</getter>
+				
+				<setter>
+					// TODO : implement
+				</setter>
+			</property>
+		</implementation>
+	</binding>
+</bindings>
