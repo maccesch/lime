@@ -1,30 +1,166 @@
 <?xml version="1.0"?>
-<bindings xmlns="http://www.mozilla.org/xbl">
+<bindings xmlns="http://www.mozilla.org/xbl"
+		xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+		xmlns:xbl="http://www.mozilla.org/xbl">
+	
 	<binding id="multiselectbox">
 		<content>
-			<xul:label xbl:inherits="value=availableTitle"/>
-			<xul:listbox class="available" xbl:inherits="rows">
-				<children includes="listitem[not(@selected)]"/>
-			</xul:listbox>
-			<xul:button label=">" class="add"/>
-			<xul:button label="<" class="remove"/>
-			<xul:label xbl:inherits="value=selectedTitle"/>
-			<xul:listbox class="selected" xbl:inherits="rows">
-				<children includes="listitem[@selected]"/>
-			</xul:listbox>
+			<xul:vbox>
+				<xul:label xbl:inherits="value=availableTitle" />
+				<xul:listbox seltype="multiple" class="available" xbl:inherits="rows">
+					<children includes="listitem[not(@selected)]" />
+				</xul:listbox>
+			</xul:vbox>
+			<xul:vbox align="center">
+				<xul:spacer flex="1" />
+				<xul:box class="multiselectbox-button add" onclick="document.getBindingParent(this).addSelectedAvailable()" />
+				<xul:box class="multiselectbox-button remove" onclick="document.getBindingParent(this).removeSelectedSelected()" />
+				<xul:spacer flex="1" />
+			</xul:vbox>
+			<xul:vbox>
+				<xul:label xbl:inherits="value=selectedTitle"/>
+				<xul:listbox seltype="multiple" class="selected" xbl:inherits="rows">
+					<children includes="listitem[@selected]" />
+				</xul:listbox>
+			</xul:vbox>
 		</content>
 		
 		<implementation>
 			<property name="selectedItems">
 				<getter>
 					var children = document.getAnonymousNodes(this);
-					return children[children.length-1].childNodes;
+					return children[2].childNodes[1].childNodes;
 				</getter>
-				
+			</property>
+			
+			<property name="unselectedItems">
+				<getter>
+					var children = document.getAnonymousNodes(this);
+					return children[0].childNodes[1].childNodes;
+				</getter>
+			</property>
+			
+			<method name="appendItem">
+				<parameter name="label" />
+				<parameter name="selected" />
+				<parameter name="value" />
+				<body>
+					var contents = document.getAnonymousNodes(this);
+					var availListBox = contents[0].childNodes[1];
+					var selListBox = contents[2].childNodes[1];
+					
+					var el;
+					if (selected) {
+						el = selListBox.appendItem(label, value);
+					} else {
+						el = availListBox.appendItem(label, value);
+					}
+					
+					el.sortIndex = availListBox.childNodes.length + selListBox.childNodes.length;
+					return el;
+				</body>
+			</method>
+			
+			<method name="addItemToSelection">
+				<parameter name="item" />
+				<body>
+					var contents = document.getAnonymousNodes(this);
+					var availListBox = contents[0].childNodes[1];
+					var selListBox = contents[2].childNodes[1];
+					
+					availListBox.removeChild(item);
+					selListBox.appendChild(item);
+				</body>
+			</method>
+			
+			<method name="removeItemFromSelection">
+				<parameter name="item" />
+				<body>
+					var contents = document.getAnonymousNodes(this);
+					var availListBox = contents[0].childNodes[1];
+					var selListBox = contents[2].childNodes[1];
+					
+					selListBox.removeChild(item);
+					
+					for (var i = 0; i &lt; availListBox.childNodes.length; ++i) {
+						var child = availListBox.childNodes[i];
+						if (child.sortIndex > item.sortIndex) {
+							availListBox.insertBefore(item, child);
+							break;
+						}
+					}
+				</body>
+			</method>
+			
+			<method name="addSelectedAvailable">
+				<body>
+					var contents = document.getAnonymousNodes(this);
+					var availListBox = contents[0].childNodes[1];
+					
+					var items = availListBox.selectedItems.clone();
+					var self = this;
+					items.each(function(item) {
+						self.addItemToSelection(item);
+					});
+				</body>
+			</method>
+			
+			<method name="removeSelectedSelected">
+				<body>
+					var contents = document.getAnonymousNodes(this);
+					var availListBox = contents[0].childNodes[1];
+					var selListBox = contents[2].childNodes[1];
+					
+					var items = selListBox.selectedItems.clone();
+					var self = this;
+					items.each(function(item) {
+						self.removeItemFromSelection(item);
+					});
+				</body>
+			</method>
+			
+			<method name="clearSelection">
+				<body>
+					var contents = document.getAnonymousNodes(this);
+					var selListBox = contents[2].childNodes[1];
+					
+					while (selListBox.firstChild) {
+						this.removeItemFromSelection(selListBox.firstChild);
+					}
+				</body>
+			</method>
+		</implementation>
+	</binding>
+	
+	<binding id="lock">
+		<content>
+		</content>
+		
+		<implementation>
+			<property name='locked'>
+				<getter>
+					var locked = false;
+					if (this.hasAttribute('locked')) {
+						locked = this.getAttribute('locked') == 'true';
+					}
+					return locked;
+				</getter>
 				<setter>
-					// TODO : implement
+					this.setAttribute('locked', val);
 				</setter>
 			</property>
+			
+			<method name='toggle'>
+				<body>
+					this.locked = !this.locked;
+				</body>
+			</method>
 		</implementation>
+		
+		<handlers>
+			<handler event="click">
+				this.toggle();
+			</handler>
+		</handlers>
 	</binding>
 </bindings>

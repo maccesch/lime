@@ -16,8 +16,6 @@
 <script src="js/libs/xultools.js" type="application/x-javascript"/>
 <script src="js/libs/mozwebsql.js" type="application/x-javascript"/>
 <script src="js/libs/djStorm.js" type="application/x-javascript"/>
-<!--  <script src="js/libs/dummywebsql.js" type="application/x-javascript"/> -->
-<!-- <script src="js/libs/impel-source.js" type="application/x-javascript"/> -->
 
 <script src="js/settings.js" type="application/x-javascript"/>
 <script src="js/initdb.js" type="application/x-javascript"/>

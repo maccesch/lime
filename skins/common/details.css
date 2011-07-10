@@ -3,6 +3,20 @@
 /*	border-left: 1px solid #999999; */
 }
 
+.details .edit .label-box {
+	padding-top: 4px;
+}
+
+.details lock {
+	margin-left: 0;
+}
+
 .details-label {
-	width: 100px;
+	width: 90px;
+	text-align: right;
+	color: #555555;
+}
+
+.details {
+	background-color: #f5f5f0;
 }

@@ -17,7 +17,7 @@
 		INSTALLED_MODULES.each(loadModule);
 		window.setTimeout(function() {
 			PageManager.getInstance().init();
-		} ,100);
+		}, 100);
 	});
 })();
 

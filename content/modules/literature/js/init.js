@@ -2,7 +2,9 @@
 (function() {
 	
 	var listViewDescr = createDefaultListViewDescr(LiteratureType);
-	var editDescr = createDefaultEditDescr(LiteratureType);
+	var editDescr = createDefaultEditDescr(LiteratureType, {
+		locked: ['type']
+	});
 	var ctrl = new ListDetailsController(listViewDescr, editDescr);
 
 	function fetchAllLanguages(tx) {

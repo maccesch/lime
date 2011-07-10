@@ -1,0 +1,21 @@
+lock {
+	-moz-binding: url('chrome://lime/content/bindings.xml#lock');
+	opacity: 0.1;
+	width: 14px;
+	height: 12px;
+	margin: 3px 6px;
+	background: url(img/unlocked.png) no-repeat;
+}
+
+lock[locked='true'] {
+	background: url(img/locked.png) no-repeat;
+	opacity: 0.25;
+}
+
+lock:hover, lock[locked='true']:hover {
+	opacity: 0.5;
+}
+
+lock:active, lock[locked='true']:active {
+	opacity: 0.7;
+}

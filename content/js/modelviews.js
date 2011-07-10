@@ -11,8 +11,11 @@ function createDefaultListViewDescr(model) {
 		cells : {}
 	};
 	var columns = [];
-	for (name in model.getScheme()) {
-		columns.push(name);
+	var fields = model.getFields();
+	for (name in fields) {
+		if (!fields[name].getParams().through) {
+			columns.push(name);
+		}
 	}
 	columns.each(function(col) {
 		var key = col;
@@ -31,7 +34,12 @@ function createDefaultListViewDescr(model) {
 	return viewDescr;
 }
 
-function createDefaultEditDescr(model) {
+function createDefaultEditDescr(model, options) {
+	
+	options = Object.merge({
+		locked: [],
+	}, options);
+	
 	var editDescr = {
 		save : {},
 		get : {},
@@ -41,11 +49,12 @@ function createDefaultEditDescr(model) {
 		create : function() {
 			return new model();
 		},
+		locked: {},
 		_viewValueEl : {},
 		_editValueEl : {}
 	}
 	
-	var scheme = model.getScheme();
+	var scheme = model.getFields();
 
 	function createMethods(key) {
 		var keyUp = key[0].toUpperCase() + key.substr(1);
@@ -76,6 +85,8 @@ function createDefaultEditDescr(model) {
 							viewEl.appendChild(item);
 						});
 					});
+				} else if (viewEl.nodeName == 'checkbox') {
+					viewEl.setAttribute('checked', value);
 				} else {
 					viewEl.setAttribute('value', value);
 				}
@@ -89,26 +100,65 @@ function createDefaultEditDescr(model) {
 							break;
 						}
 					}
+				} else if (editEl.nodeName == 'multiselectbox') {
+					// ManyToManyField
+					editEl.clearSelection();
+
+					value.all(function(instances) {
+						instances.each(function(instance, index) {
+							var primKey = instance._model.Meta.primaryKey;
+							
+							for (var i = 0; i < editEl.unselectedItems.length; ++i) {
+								var item = editEl.unselectedItems[i];
+								if (item.object[primKey] == instance[primKey]) {
+									editEl.addItemToSelection(item);
+									break;
+								}
+							}
+						});
+					});
+					
+				} else if (editEl.nodeName == 'checkbox') {
+					editEl.setAttribute('checked', value === undefined ? false : value);
 				} else {
-					editEl.value = value;
+					editEl.value = value === undefined ? "" : value;
 				}
 			});
 		}
 
-		editDescr.save[key] = function(modelEl) {
+		editDescr.save[key] = function(modelEl, doneCallback) {
 			var editEl = editDescr._editValueEl[key];
 			var value;
 			if (editEl.nodeName == 'menulist') {
+				// choices
 				value = editEl.selectedItem.object;
+			} else if (editEl.nodeName == 'checkbox') {
+				// BooleanField
+				value = editEl.checked;
+			} else if (editEl.nodeName == 'multiselectbox') {
+				// ManyToManyField
+				var sel = editEl.selectedItems;
+				value = [];
+				for ( var i = 0; i < sel.length; i++) {
+					value.push(sel[i].object);
+				}
 			} else {
 				value = editEl.value;
 			}
-			if (modelEl[key].set) {
-				modelEl[key].set(value);
+			if (modelEl[key] && modelEl[key].set) {
+				if (modelEl[key].set.length == 2) {
+					modelEl[key].set(value, doneCallback);
+				} else {
+					modelEl[key].set(value);
+					doneCallback();
+				}
 			} else {
 				modelEl[key] = (value);
+				doneCallback();
 			}
 		}
+		
+		editDescr.locked[key] = options.locked.contains(key);
 
 		editDescr.createXul[key] = function(viewEl, editEl) {
 			// view details
@@ -122,7 +172,7 @@ function createDefaultEditDescr(model) {
 
 			var label = newXulEl('label', attrs);
 			box.appendChild(label);
-
+			
 			var fieldType = model.objects._model[key];
 			editDescr._viewValueEl[key] = OutputFactory.createOutput(fieldType, {
 				'class' : 'details-view-value ' + key
@@ -134,8 +184,25 @@ function createDefaultEditDescr(model) {
 			box = newXulEl('box');
 			editEl.appendChild(box);
 
+			var labelBox = newXulEl('box', {
+				'class': 'label-box'
+			});
+			box.appendChild(labelBox);
+
+			labelBox.appendChild(newXulEl('spacer', { 'flex': 1 }));
+
 			label = newXulEl('label', attrs);
-			box.appendChild(label);
+			labelBox.appendChild(label);
+
+			var lock = newXulEl('lock', {
+				'locked': editDescr.locked[key]
+			});
+			lock.addEvent('click', function() {
+				window.setTimeout(function() {
+					editDescr.locked[key] = this.locked;
+				}.bind(this), 100);
+			});
+			labelBox.appendChild(lock);
 
 			editDescr._editValueEl[key] = InputFactory.createInput(fieldType, {
 				'class' : 'details-edit-value'
@@ -157,6 +224,8 @@ var OutputFactory = {
 	createOutput: function(field, attrs) {
 		if (field instanceof ManyToManyField) {
 			return this.createList(field, attrs);
+		} else if (field instanceof BooleanField) {
+			return this.createCheckBox(field, attrs);
 		} else {
 			return this.createLabel(field, attrs);
 		}
@@ -164,6 +233,10 @@ var OutputFactory = {
 	
 	createLabel: function(field, attrs) {
 		return newXulEl('label', attrs);
+	},
+	
+	createCheckBox: function(field, attrs) {
+		return newXulEl('checkbox', attrs);
 	},
 	
 	createList: function(field, attrs) {
@@ -200,6 +273,10 @@ var InputFactory = {
 			}));
 		} else if (field instanceof ForeignKey) {
 			return this.createForeignKeyList(field, attrs);
+		} else if (field instanceof ManyToManyField) {
+			return this.createMultiSelectBox(field, attrs);
+		} else if (field instanceof BooleanField) {
+			return this.createCheckBox(field, attrs);
 		}
 		return this.createTextInput(field, attrs);
 	},
@@ -209,11 +286,37 @@ var InputFactory = {
 		return input;
 	},
 	
+	createCheckBox: function(field, params) {
+		var input = newXulEl('checkbox', params);
+		return input;
+	},
+	
+	createMultiSelectBox: function(field, params) {
+		var msb = newXulEl('multiselectbox', Object.merge(params, {
+			selectedTitle: 'Ausgewählt',
+			availableTitle: 'Verfügbar'
+		}));
+		field.msb = msb;
+		var primKey = field.getModel().objects._model.Meta.primaryKey;
+		
+		window.setTimeout(function() {
+			// TODO : this has to be updated if instances of this model are changed or added or removed
+			field.getModel().objects.all(function(instances) {
+				instances.each(function(instance) {
+					var item = field.msb.appendItem(instance.toString(), false, instance[primKey]);
+					item.object = instance;
+				});
+			});
+		}, 1000);
+		return msb;
+	},
+	
 	createForeignKeyList: function(field, params) {
 		var ml = this.createMenuList(field, params, []);
 		field.ml = ml.firstChild;
 		var primKey = field.getModel().objects._model.Meta.primaryKey;
 		
+		// TODO : this has to be updated if instances of this model are changed or added or removed
 		field.getModel().objects.all(function(instances) {
 			instances.each(function (instance) {
 				var item = newXulEl('menuitem', {
@@ -481,19 +584,33 @@ var DetailsView = new Class({
 		});
 		vbox.appendChild(statusbar);
 
-		var statusbarpanel = newXulEl('statusbarpanel');
+		var statusbarpanel = newXulEl('statusbarpanel', {
+			'flex': 1,
+		});
 		statusbar.appendChild(statusbarpanel);
+
+		this.doneButton = newXulEl('button', {
+			'label' : 'Speichern',
+			'class' : 'flat'
+		});
+		statusbarpanel.appendChild(this.doneButton);
+
+		this.nextButton = newXulEl('button', {
+			'label' : 'Nächstes',
+			'class' : 'flat'
+		});
+		statusbarpanel.appendChild(this.nextButton);
 
 		var spacer = newXulEl('spacer', {
 			'flex' : 1
 		});
-		statusbar.appendChild(spacer);
+		statusbarpanel.appendChild(spacer);
 
-		this.doneButton = newXulEl('button', {
-			'label' : 'OK',
+		this.cancelButton = newXulEl('button', {
+			'label' : 'Abbrechen',
 			'class' : 'flat'
 		});
-		statusbarpanel.appendChild(this.doneButton);
+		statusbarpanel.appendChild(this.cancelButton);
 
 		this.editEl = box;
 
@@ -528,6 +645,14 @@ var DetailsView = new Class({
 
 	getDoneButton : function() {
 		return this.doneButton;
+	},
+	
+	getNextButton : function() {
+		return this.nextButton;
+	},
+	
+	getCancelButton: function() {
+		return this.cancelButton;
 	}
 });
 
@@ -585,10 +710,41 @@ var ListDetailsController = new Class({
 		this.listView.setObjects(objs);
 	},
 
-	createNewModelObject : function() {
+	createNewModelObject : function(init, doneCallback) {
 		var newObj = this.editDescr.create();
-		this.modelObjects.push(newObj);
-		this.listView.addObject(newObj);
+		
+		if (init) {
+			var fields = Object.keys(init);
+			var initField = function(index) {
+				if (index < fields.length) {
+					var key = fields[index];
+					if (newObj[key] && newObj[key].set) {
+						if (newObj[key].set.length == 2) {
+							// ManyToManyField
+							newObj[key].set(init[key], function() {
+								initField(index+1);
+							}.bind(this));
+						} else {
+							// ForeignKey
+							newObj[key].set(init[key]);
+							initField(index+1);
+						}
+					} else {
+						newObj[key] = init[key];
+						initField(index+1);
+					}
+				} else {
+					this.modelObjects.push(newObj);
+					this.listView.addObject(newObj);
+					doneCallback();
+				}
+			}.bind(this);
+			initField(0);
+			
+		} else {
+			this.modelObjects.push(newObj);
+			this.listView.addObject(newObj);
+		}
 	},
 
 	attach : function() {
@@ -601,6 +757,10 @@ var ListDetailsController = new Class({
 				this.onEdit.bind(this));
 		this.detailsView.getDoneButton().addEvent('click',
 				this.onEditDone.bind(this));
+		this.detailsView.getNextButton().addEvent('click',
+				this.onNext.bind(this));
+		this.detailsView.getCancelButton().addEvent('click',
+				this.onEditCanceled.bind(this));
 
 		this.listView.getNewButton().addEvent('click', this.onNew.bind(this));
 	},
@@ -611,30 +771,46 @@ var ListDetailsController = new Class({
 		// this.detailsView.setObject(this.modelObjects[this.currentIndex]);
 	},
 
-	stopEdit : function() {
+	saveEdit : function(doneCallback) {
 		var curObj = this.modelObjects[this.currentIndex];
 
+		var saveFields = [];
 		for (key in this.editDescr.save) {
-			this.editDescr.save[key](curObj);
+			saveFields.push(key);
 		}
+		
+		var saveField = function(index) {
+			if (index < saveFields.length) {
+				this.editDescr.save[saveFields[index]](curObj, function() {
+					saveField(index + 1);
+				});
+			} else {
+				// TODO : error handling
+				this.modelObjects[this.currentIndex].save(function(instance) {
+					doneCallback();
+				}.bind(this));
+			}
+		}.bind(this);
+		saveField(0);
 
-		// TODO : error handling
-		this.modelObjects[this.currentIndex].save(function(instance) {
-			this.detailsView.stopEdit();
-			this.detailsView.setObject(curObj);
-			this.editingNew = false;
+	},
+	
+	finishEdit: function() {
+		var curObj = this.modelObjects[this.currentIndex];
+		this.detailsView.stopEdit();
+		this.detailsView.setObject(curObj);
+		this.editingNew = false;
 
-			this.listView.setObject(this.currentIndex, curObj);
-			this.listView.activate();
-		}.bind(this));
+		this.listView.setObject(this.currentIndex, curObj);
+		this.listView.activate();
 	},
 
-	onChange : function(key, value) {
-		// save changes to model
-		this.editDescr.save[key](this.modelObjects[this.currentIndex], value);
-		this.listView.setObject(this.currentIndex,
-				this.modelObjects[this.currentIndex]);
-	},
+//	onChange : function(key, value) {
+//		// save changes to model
+//		this.editDescr.save[key](this.modelObjects[this.currentIndex], value);
+//		this.listView.setObject(this.currentIndex,
+//				this.modelObjects[this.currentIndex]);
+//	},
 
 	onListSelect : function(tree) {
 		this.currentIndex = tree.currentIndex;
@@ -646,7 +822,54 @@ var ListDetailsController = new Class({
 	},
 
 	onEditDone : function() {
-		this.stopEdit();
+		this.saveEdit(this.finishEdit.bind(this));
+	},
+
+	onEditCanceled : function() {
+		this.finishEdit();
+	},
+	
+	onNext: function() {
+		this.saveEdit(function() {
+			var curObj = this.modelObjects[this.currentIndex];
+			
+			var init = {}
+			var lockedFields = [];
+			for (var key in this.editDescr.locked) {
+				if (this.editDescr.locked[key]) {
+					lockedFields.push(key);
+				}
+				
+			}
+			var addInitKey = function(index) {
+				if (index < lockedFields.length) {
+					var key = lockedFields[index];
+					if (curObj[key].clear) {
+						// ManyToManyField
+						curObj[key].all(function(instances) {
+							init[key] = instances;
+							addInitKey(index+1);
+						});
+					} else if (curObj[key].get) {
+						// ForeignKey
+						curObj[key].get(function(instance) {
+							init[key] = instance;
+							addInitKey(index+1);
+						});
+					} else {
+						init[key] = curObj[key];
+						addInitKey(index+1);
+					}
+					
+				} else {
+					this.createNewModelObject(init, function() {
+						this.listView.select(this.modelObjects.length - 1);
+						this.editingNew = true;
+					}.bind(this));
+				}
+			}.bind(this);
+			addInitKey(0);
+		}.bind(this));
 	},
 
 	onNew : function() {

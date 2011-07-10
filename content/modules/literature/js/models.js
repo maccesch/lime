@@ -20,7 +20,8 @@ var LiteratureType;
 		shortcut: new CharField({ maxLength: 6, verboseName: 'Abkürzung' }),
 		orderId: new CharField({ maxLength: 10, primaryKey: true, verboseName: 'Bestellnr' }),
 		type: new IntegerField({ choices: TYPE_CHOICES, verboseName: 'Typ' }),
-		languages: new ManyToManyField(Language, { relatedName: 'literatureTypes', verboseName: 'Sprachen' })
+		languages: new ManyToManyField(Language, { relatedName: 'literatureTypes', verboseName: 'Sprachen' }),
+		stockable: new BooleanField({ verboseName: 'Lagerartikel' })
 	});
 
 })();

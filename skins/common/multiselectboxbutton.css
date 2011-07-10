@@ -1,0 +1,22 @@
+box.multiselectbox-button {
+    -moz-border-bottom-colors: none;
+    -moz-border-left-colors: none;
+    -moz-border-right-colors: none;
+    -moz-border-top-colors: none;
+    -moz-appearance: none;
+	color: rgba(0, 0, 0, .8);
+	padding: 0;
+	margin: 0.3em;
+	text-shadow: rgba(255, 255, 255, .4) 0 1px;
+	border: 1px #5a5a5a solid;
+	border-color: -moz-linear-gradient(-90deg, #fe0000, #00b8b8);
+	-moz-border-radius: 1em;
+	background: -moz-linear-gradient(-90deg, #fefefe, #b8b8b8);
+	-moz-box-shadow: rgba(255, 255, 255, .4) 0 1px;
+	height: 2em;
+	width: 2em;
+}
+
+box.multiselectbox-button:active {
+	background: -moz-linear-gradient(-90deg, #999999, #cccccc);
+}
