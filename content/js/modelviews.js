@@ -26,7 +26,7 @@ function createDefaultListViewDescr(model) {
 			} else if (modelEl[key] instanceof SingleManager) {
 				modelEl[key].get(callback);
 			} else {
-				callback(modelEl[key]);
+				callback(modelEl[key] === undefined ? '-' : modelEl[key]);
 			}
 		}
 		viewDescr.cells[key].title = model.objects._model[key].getParams().verboseName;
