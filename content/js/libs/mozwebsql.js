@@ -110,10 +110,8 @@ WebDatabase.Transaction.prototype.executeSql = function(queryStr, parameters, re
 		},
 		
 		handleError: function(error) {
+			dump(error.message);
 			errorCallback(self, error);
-			if (console) {
-				console.error(error.message);
-			}
 		},
 		
 		handleCompletion: function(reason) {

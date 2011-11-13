@@ -377,7 +377,7 @@ RelatedManagerPlaceholder.prototype.save = function(relatedManager, callback) {
 
 /**
  * Returns the RelatedManager that should replace this placeholder.
- * @param modelDef Model definition of the model this placeholder is in.
+ * @param relModelDef Model definition of the model this placeholder is in.
  * @param id Value of the primary key that the concerned instances reference to.
  */
 RelatedManagerPlaceholder.prototype.getManager = function(relModelDef, id) {
@@ -531,8 +531,6 @@ QuerySet.prototype._buildFrom = function() {
 QuerySet.prototype.delete = function(onComplete) {
 	this._cache = [];
 	var self = this;
-	// TODO : delete dependent objects and ManyToManyFields
-	
 	db.transaction(function (tx) {
 		var where = self._buildWhere();
 		var from = self._buildFrom();
@@ -1046,29 +1044,25 @@ ManyToManyField.prototype = new Field();
 ManyToManyField.prototype.toSql = function(value) {
 }
 
-ManyToManyField.prototype.toJs = function(value, callback) {
-	var interModel = this._params.through.objects._model;
-	
-	var foreignKey = ManyToManyField.getForeignKey(interModel, this._model);
-	
-	callback(new RelatedManagerPlaceholder(this._refModel.objects._model, foreignKey, interModel));
-}
-
-/**
- * find field of interModel that references the thisModel.
- */ 
-ManyToManyField.getForeignKey = function(interModel, thisModel) {
-	var foreignKey;
-	for (name in interModel) {
+// find field of interModel that references the model where this field is in.
+ManyToManyField.findForeignKey = function(interModel, thisModel) {
+	for (var name in interModel) {
 		var type = interModel[name];
 		if (type instanceof ForeignKey) {
 			if (type._refModel.objects._model == thisModel) {
-				foreignKey = name;
-				break;
+				return name;
 			}
 		}
 	}
-	return foreignKey;
+}
+
+ManyToManyField.prototype.toJs = function(value, callback) {
+	var interModel = this._params.through.objects._model;
+	
+	var foreignKey = ManyToManyField.findForeignKey(interModel, this._model);
+	
+	// TODO : put value in placeholder?
+	callback(new RelatedManagerPlaceholder(this._refModel.objects._model, foreignKey, interModel));
 }
 
 ManyToManyField.prototype._createDefaultThrough = function(thisModel, fieldName) {
@@ -1309,11 +1303,11 @@ Model.replacePlaceholders = function(instance) {
  */
 Model.createPlaceholder = function(instance, name, type, values) {
 	if (type.getParams().through) {
+
+		var foreignKey = ManyToManyField.findForeignKey(type.getParams().through.objects._model, type._model);
+
 		// ManyToManyField
-		var interModel = type.getParams().through.objects._model;
-		var foreignKey = ManyToManyField.getForeignKey(interModel, instance._model);
-		
-		instance[name] = new RelatedManagerPlaceholder(type.getModel().objects._model, foreignKey, interModel, values);
+		instance[name] = new RelatedManagerPlaceholder(type.getModel().objects._model, foreignKey, type.getParams().through.objects._model, values);
 	} else {
 		// ForeignKey
 		//instance[name] = new SingleManagerPlaceholder(...);

@@ -15,7 +15,7 @@
 <script src="js/libs/mootools-core-1.3-full-nocompat-yc.js" type="application/x-javascript"/>
 <script src="js/libs/xultools.js" type="application/x-javascript"/>
 <script src="js/libs/mozwebsql.js" type="application/x-javascript"/>
-<script src="js/libs/djStorm.js" type="application/x-javascript"/>
+<script src="js/libs/djstorm.js" type="application/x-javascript"/>
 
 <script src="js/settings.js" type="application/x-javascript"/>
 <script src="js/initdb.js" type="application/x-javascript"/>
